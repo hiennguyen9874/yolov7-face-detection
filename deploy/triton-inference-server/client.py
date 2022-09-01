@@ -15,92 +15,119 @@ from labels import COCOLabels
 INPUT_NAMES = ["images"]
 OUTPUT_NAMES = ["num_dets", "det_boxes", "det_scores", "det_classes"]
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode',
-                        choices=['dummy', 'image', 'video'],
-                        default='dummy',
-                        help='Run mode. \'dummy\' will send an emtpy buffer to the server to test if inference works. \'image\' will process an image. \'video\' will process a video.')
-    parser.add_argument('input',
-                        type=str,
-                        nargs='?',
-                        help='Input file to load from in image or video mode')
-    parser.add_argument('-m',
-                        '--model',
-                        type=str,
-                        required=False,
-                        default='yolov7',
-                        help='Inference model name, default yolov7')
-    parser.add_argument('--width',
-                        type=int,
-                        required=False,
-                        default=640,
-                        help='Inference model input width, default 640')
-    parser.add_argument('--height',
-                        type=int,
-                        required=False,
-                        default=640,
-                        help='Inference model input height, default 640')
-    parser.add_argument('-u',
-                        '--url',
-                        type=str,
-                        required=False,
-                        default='localhost:8001',
-                        help='Inference server URL, default localhost:8001')
-    parser.add_argument('-o',
-                        '--out',
-                        type=str,
-                        required=False,
-                        default='',
-                        help='Write output into file instead of displaying it')
-    parser.add_argument('-f',
-                        '--fps',
-                        type=float,
-                        required=False,
-                        default=24.0,
-                        help='Video output fps, default 24.0 FPS')
-    parser.add_argument('-i',
-                        '--model-info',
-                        action="store_true",
-                        required=False,
-                        default=False,
-                        help='Print model status, configuration and statistics')
-    parser.add_argument('-v',
-                        '--verbose',
-                        action="store_true",
-                        required=False,
-                        default=False,
-                        help='Enable verbose client output')
-    parser.add_argument('-t',
-                        '--client-timeout',
-                        type=float,
-                        required=False,
-                        default=None,
-                        help='Client timeout in seconds, default no timeout')
-    parser.add_argument('-s',
-                        '--ssl',
-                        action="store_true",
-                        required=False,
-                        default=False,
-                        help='Enable SSL encrypted channel to the server')
-    parser.add_argument('-r',
-                        '--root-certificates',
-                        type=str,
-                        required=False,
-                        default=None,
-                        help='File holding PEM-encoded root certificates, default none')
-    parser.add_argument('-p',
-                        '--private-key',
-                        type=str,
-                        required=False,
-                        default=None,
-                        help='File holding PEM-encoded private key, default is none')
-    parser.add_argument('-x',
-                        '--certificate-chain',
-                        type=str,
-                        required=False,
-                        default=None,
-                        help='File holding PEM-encoded certicate chain default is none')
+    parser.add_argument(
+        "mode",
+        choices=["dummy", "image", "video"],
+        default="dummy",
+        help="Run mode. 'dummy' will send an emtpy buffer to the server to test if inference works. 'image' will process an image. 'video' will process a video.",
+    )
+    parser.add_argument(
+        "input", type=str, nargs="?", help="Input file to load from in image or video mode"
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        required=False,
+        default="yolov7",
+        help="Inference model name, default yolov7",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        required=False,
+        default=640,
+        help="Inference model input width, default 640",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        required=False,
+        default=640,
+        help="Inference model input height, default 640",
+    )
+    parser.add_argument(
+        "-u",
+        "--url",
+        type=str,
+        required=False,
+        default="localhost:8001",
+        help="Inference server URL, default localhost:8001",
+    )
+    parser.add_argument(
+        "-o",
+        "--out",
+        type=str,
+        required=False,
+        default="",
+        help="Write output into file instead of displaying it",
+    )
+    parser.add_argument(
+        "-f",
+        "--fps",
+        type=float,
+        required=False,
+        default=24.0,
+        help="Video output fps, default 24.0 FPS",
+    )
+    parser.add_argument(
+        "-i",
+        "--model-info",
+        action="store_true",
+        required=False,
+        default=False,
+        help="Print model status, configuration and statistics",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        required=False,
+        default=False,
+        help="Enable verbose client output",
+    )
+    parser.add_argument(
+        "-t",
+        "--client-timeout",
+        type=float,
+        required=False,
+        default=None,
+        help="Client timeout in seconds, default no timeout",
+    )
+    parser.add_argument(
+        "-s",
+        "--ssl",
+        action="store_true",
+        required=False,
+        default=False,
+        help="Enable SSL encrypted channel to the server",
+    )
+    parser.add_argument(
+        "-r",
+        "--root-certificates",
+        type=str,
+        required=False,
+        default=None,
+        help="File holding PEM-encoded root certificates, default none",
+    )
+    parser.add_argument(
+        "-p",
+        "--private-key",
+        type=str,
+        required=False,
+        default=None,
+        help="File holding PEM-encoded private key, default is none",
+    )
+    parser.add_argument(
+        "-x",
+        "--certificate-chain",
+        type=str,
+        required=False,
+        default=None,
+        help="File holding PEM-encoded certicate chain default is none",
+    )
 
     FLAGS = parser.parse_args()
 
@@ -112,7 +139,8 @@ if __name__ == '__main__':
             ssl=FLAGS.ssl,
             root_certificates=FLAGS.root_certificates,
             private_key=FLAGS.private_key,
-            certificate_chain=FLAGS.certificate_chain)
+            certificate_chain=FLAGS.certificate_chain,
+        )
     except Exception as e:
         print("context creation failed: " + str(e))
         sys.exit()
@@ -157,23 +185,29 @@ if __name__ == '__main__':
             sys.exit(1)
 
     # DUMMY MODE
-    if FLAGS.mode == 'dummy':
+    if FLAGS.mode == "dummy":
         print("Running in 'dummy' mode")
         print("Creating emtpy buffer filled with ones...")
         inputs = []
         outputs = []
-        inputs.append(grpcclient.InferInput(INPUT_NAMES[0], [1, 3, FLAGS.width, FLAGS.height], "FP32"))
-        inputs[0].set_data_from_numpy(np.ones(shape=(1, 3, FLAGS.width, FLAGS.height), dtype=np.float32))
+        inputs.append(
+            grpcclient.InferInput(INPUT_NAMES[0], [1, 3, FLAGS.width, FLAGS.height], "FP32")
+        )
+        inputs[0].set_data_from_numpy(
+            np.ones(shape=(1, 3, FLAGS.width, FLAGS.height), dtype=np.float32)
+        )
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[0]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[1]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[2]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[3]))
 
         print("Invoking inference...")
-        results = triton_client.infer(model_name=FLAGS.model,
-                                      inputs=inputs,
-                                      outputs=outputs,
-                                      client_timeout=FLAGS.client_timeout)
+        results = triton_client.infer(
+            model_name=FLAGS.model,
+            inputs=inputs,
+            outputs=outputs,
+            client_timeout=FLAGS.client_timeout,
+        )
         if FLAGS.model_info:
             statistics = triton_client.get_inference_statistics(model_name=FLAGS.model)
             if len(statistics.model_stats) != 1:
@@ -184,11 +218,11 @@ if __name__ == '__main__':
 
         for output in OUTPUT_NAMES:
             result = results.as_numpy(output)
-            print(f"Received result buffer \"{output}\" of size {result.shape}")
+            print(f'Received result buffer "{output}" of size {result.shape}')
             print(f"Naive buffer sum: {np.sum(result)}")
 
     # IMAGE MODE
-    if FLAGS.mode == 'image':
+    if FLAGS.mode == "image":
         print("Running in 'image' mode")
         if not FLAGS.input:
             print("FAILED: no input image")
@@ -196,7 +230,9 @@ if __name__ == '__main__':
 
         inputs = []
         outputs = []
-        inputs.append(grpcclient.InferInput(INPUT_NAMES[0], [1, 3, FLAGS.width, FLAGS.height], "FP32"))
+        inputs.append(
+            grpcclient.InferInput(INPUT_NAMES[0], [1, 3, FLAGS.width, FLAGS.height], "FP32")
+        )
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[0]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[1]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[2]))
@@ -213,10 +249,12 @@ if __name__ == '__main__':
         inputs[0].set_data_from_numpy(input_image_buffer)
 
         print("Invoking inference...")
-        results = triton_client.infer(model_name=FLAGS.model,
-                                      inputs=inputs,
-                                      outputs=outputs,
-                                      client_timeout=FLAGS.client_timeout)
+        results = triton_client.infer(
+            model_name=FLAGS.model,
+            inputs=inputs,
+            outputs=outputs,
+            client_timeout=FLAGS.client_timeout,
+        )
         if FLAGS.model_info:
             statistics = triton_client.get_inference_statistics(model_name=FLAGS.model)
             if len(statistics.model_stats) != 1:
@@ -227,33 +265,57 @@ if __name__ == '__main__':
 
         for output in OUTPUT_NAMES:
             result = results.as_numpy(output)
-            print(f"Received result buffer \"{output}\" of size {result.shape}")
+            print(f'Received result buffer "{output}" of size {result.shape}')
             print(f"Naive buffer sum: {np.sum(result)}")
 
         num_dets = results.as_numpy(OUTPUT_NAMES[0])
         det_boxes = results.as_numpy(OUTPUT_NAMES[1])
         det_scores = results.as_numpy(OUTPUT_NAMES[2])
         det_classes = results.as_numpy(OUTPUT_NAMES[3])
-        detected_objects = postprocess(num_dets, det_boxes, det_scores, det_classes, input_image.shape[1], input_image.shape[0], [FLAGS.width, FLAGS.height])
+        detected_objects = postprocess(
+            num_dets,
+            det_boxes,
+            det_scores,
+            det_classes,
+            input_image.shape[1],
+            input_image.shape[0],
+            [FLAGS.width, FLAGS.height],
+        )
         print(f"Detected objects: {len(detected_objects)}")
 
         for box in detected_objects:
             print(f"{COCOLabels(box.classID).name}: {box.confidence}")
-            input_image = render_box(input_image, box.box(), color=tuple(RAND_COLORS[box.classID % 64].tolist()))
-            size = get_text_size(input_image, f"{COCOLabels(box.classID).name}: {box.confidence:.2f}", normalised_scaling=0.6)
-            input_image = render_filled_box(input_image, (box.x1 - 3, box.y1 - 3, box.x1 + size[0], box.y1 + size[1]), color=(220, 220, 220))
-            input_image = render_text(input_image, f"{COCOLabels(box.classID).name}: {box.confidence:.2f}", (box.x1, box.y1), color=(30, 30, 30), normalised_scaling=0.5)
+            input_image = render_box(
+                input_image, box.box(), color=tuple(RAND_COLORS[box.classID % 64].tolist())
+            )
+            size = get_text_size(
+                input_image,
+                f"{COCOLabels(box.classID).name}: {box.confidence:.2f}",
+                normalised_scaling=0.6,
+            )
+            input_image = render_filled_box(
+                input_image,
+                (box.x1 - 3, box.y1 - 3, box.x1 + size[0], box.y1 + size[1]),
+                color=(220, 220, 220),
+            )
+            input_image = render_text(
+                input_image,
+                f"{COCOLabels(box.classID).name}: {box.confidence:.2f}",
+                (box.x1, box.y1),
+                color=(30, 30, 30),
+                normalised_scaling=0.5,
+            )
 
         if FLAGS.out:
             cv2.imwrite(FLAGS.out, input_image)
             print(f"Saved result to {FLAGS.out}")
         else:
-            cv2.imshow('image', input_image)
+            cv2.imshow("image", input_image)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
     # VIDEO MODE
-    if FLAGS.mode == 'video':
+    if FLAGS.mode == "video":
         print("Running in 'video' mode")
         if not FLAGS.input:
             print("FAILED: no input video")
@@ -261,7 +323,9 @@ if __name__ == '__main__':
 
         inputs = []
         outputs = []
-        inputs.append(grpcclient.InferInput(INPUT_NAMES[0], [1, 3, FLAGS.width, FLAGS.height], "FP32"))
+        inputs.append(
+            grpcclient.InferInput(INPUT_NAMES[0], [1, 3, FLAGS.width, FLAGS.height], "FP32")
+        )
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[0]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[1]))
         outputs.append(grpcclient.InferRequestedOutput(OUTPUT_NAMES[2]))
@@ -284,39 +348,67 @@ if __name__ == '__main__':
 
             if counter == 0 and FLAGS.out:
                 print("Opening output video stream...")
-                fourcc = cv2.VideoWriter_fourcc('M', 'P', '4', 'V')
-                out = cv2.VideoWriter(FLAGS.out, fourcc, FLAGS.fps, (frame.shape[1], frame.shape[0]))
+                fourcc = cv2.VideoWriter_fourcc("M", "P", "4", "V")
+                out = cv2.VideoWriter(
+                    FLAGS.out, fourcc, FLAGS.fps, (frame.shape[1], frame.shape[0])
+                )
 
             input_image_buffer = preprocess(frame, [FLAGS.width, FLAGS.height])
             input_image_buffer = np.expand_dims(input_image_buffer, axis=0)
 
             inputs[0].set_data_from_numpy(input_image_buffer)
 
-            results = triton_client.infer(model_name=FLAGS.model,
-                                          inputs=inputs,
-                                          outputs=outputs,
-                                          client_timeout=FLAGS.client_timeout)
+            results = triton_client.infer(
+                model_name=FLAGS.model,
+                inputs=inputs,
+                outputs=outputs,
+                client_timeout=FLAGS.client_timeout,
+            )
 
             num_dets = results.as_numpy("num_dets")
             det_boxes = results.as_numpy("det_boxes")
             det_scores = results.as_numpy("det_scores")
             det_classes = results.as_numpy("det_classes")
-            detected_objects = postprocess(num_dets, det_boxes, det_scores, det_classes, frame.shape[1], frame.shape[0], [FLAGS.width, FLAGS.height])
+            detected_objects = postprocess(
+                num_dets,
+                det_boxes,
+                det_scores,
+                det_classes,
+                frame.shape[1],
+                frame.shape[0],
+                [FLAGS.width, FLAGS.height],
+            )
             print(f"Frame {counter}: {len(detected_objects)} objects")
             counter += 1
 
             for box in detected_objects:
                 print(f"{COCOLabels(box.classID).name}: {box.confidence}")
-                frame = render_box(frame, box.box(), color=tuple(RAND_COLORS[box.classID % 64].tolist()))
-                size = get_text_size(frame, f"{COCOLabels(box.classID).name}: {box.confidence:.2f}", normalised_scaling=0.6)
-                frame = render_filled_box(frame, (box.x1 - 3, box.y1 - 3, box.x1 + size[0], box.y1 + size[1]), color=(220, 220, 220))
-                frame = render_text(frame, f"{COCOLabels(box.classID).name}: {box.confidence:.2f}", (box.x1, box.y1), color=(30, 30, 30), normalised_scaling=0.5)
+                frame = render_box(
+                    frame, box.box(), color=tuple(RAND_COLORS[box.classID % 64].tolist())
+                )
+                size = get_text_size(
+                    frame,
+                    f"{COCOLabels(box.classID).name}: {box.confidence:.2f}",
+                    normalised_scaling=0.6,
+                )
+                frame = render_filled_box(
+                    frame,
+                    (box.x1 - 3, box.y1 - 3, box.x1 + size[0], box.y1 + size[1]),
+                    color=(220, 220, 220),
+                )
+                frame = render_text(
+                    frame,
+                    f"{COCOLabels(box.classID).name}: {box.confidence:.2f}",
+                    (box.x1, box.y1),
+                    color=(30, 30, 30),
+                    normalised_scaling=0.5,
+                )
 
             if FLAGS.out:
                 out.write(frame)
             else:
-                cv2.imshow('image', frame)
-                if cv2.waitKey(1) == ord('q'):
+                cv2.imshow("image", frame)
+                if cv2.waitKey(1) == ord("q"):
                     break
 
         if FLAGS.model_info:

@@ -1,14 +1,16 @@
 import numpy as np
 import onnx
 from onnx import shape_inference
+
 try:
     import onnx_graphsurgeon as gs
 except Exception as e:
-    print('Import onnx_graphsurgeon failure: %s' % e)
+    print("Import onnx_graphsurgeon failure: %s" % e)
 
 import logging
 
 LOGGER = logging.getLogger(__name__)
+
 
 class RegisterNMS(object):
     def __init__(
@@ -24,6 +26,7 @@ class RegisterNMS(object):
         self.graph.fold_constants()
         self.precision = precision
         self.batch_size = 1
+
     def infer(self):
         """
         Sanitize the graph by cleaning any unconnected nodes, do a topological resort,
@@ -135,7 +138,9 @@ class RegisterNMS(object):
 
         # Create the NMS Plugin node with the selected inputs. The outputs of the node will also
         # become the final outputs of the graph.
-        self.graph.layer(op=op, name="batched_nms", inputs=op_inputs, outputs=op_outputs, attrs=attrs)
+        self.graph.layer(
+            op=op, name="batched_nms", inputs=op_inputs, outputs=op_outputs, attrs=attrs
+        )
         LOGGER.info(f"Created NMS plugin '{op}' with attributes: {attrs}")
 
         self.graph.outputs = op_outputs

@@ -3,6 +3,7 @@ from boundingbox import BoundingBox
 import cv2
 import numpy as np
 
+
 def preprocess(img, input_shape, letter_box=True):
     if letter_box:
         img_h, img_w, _ = img.shape
@@ -16,7 +17,7 @@ def preprocess(img, input_shape, letter_box=True):
             offset_w = (input_shape[1] - new_w) // 2
         resized = cv2.resize(img, (new_w, new_h))
         img = np.full((input_shape[0], input_shape[1], 3), 127, dtype=np.uint8)
-        img[offset_h:(offset_h + new_h), offset_w:(offset_w + new_w), :] = resized
+        img[offset_h : (offset_h + new_h), offset_w : (offset_w + new_w), :] = resized
     else:
         img = cv2.resize(img, (input_shape[1], input_shape[0]))
 
@@ -25,10 +26,15 @@ def preprocess(img, input_shape, letter_box=True):
     img /= 255.0
     return img
 
-def postprocess(num_dets, det_boxes, det_scores, det_classes, img_w, img_h, input_shape, letter_box=True):
-    boxes = det_boxes[0, :num_dets[0][0]] / np.array([input_shape[0], input_shape[1], input_shape[0], input_shape[1]], dtype=np.float32)
-    scores = det_scores[0, :num_dets[0][0]]
-    classes = det_classes[0, :num_dets[0][0]].astype(np.int)
+
+def postprocess(
+    num_dets, det_boxes, det_scores, det_classes, img_w, img_h, input_shape, letter_box=True
+):
+    boxes = det_boxes[0, : num_dets[0][0]] / np.array(
+        [input_shape[0], input_shape[1], input_shape[0], input_shape[1]], dtype=np.float32
+    )
+    scores = det_scores[0, : num_dets[0][0]]
+    classes = det_classes[0, : num_dets[0][0]].astype(np.int)
 
     old_h, old_w = img_h, img_w
     offset_h, offset_w = 0, 0
@@ -47,5 +53,7 @@ def postprocess(num_dets, det_boxes, det_scores, det_classes, img_w, img_h, inpu
 
     detected_objects = []
     for box, score, label in zip(boxes, scores, classes):
-        detected_objects.append(BoundingBox(label, score, box[0], box[2], box[1], box[3], img_w, img_h))
+        detected_objects.append(
+            BoundingBox(label, score, box[0], box[2], box[1], box[3], img_w, img_h)
+        )
     return detected_objects
