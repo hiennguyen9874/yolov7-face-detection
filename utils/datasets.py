@@ -33,9 +33,6 @@ from utils.general import (
     xywh2xyxy,
     xywhn2xyxy,
     xyn2xy,
-    segment2box,
-    segments2boxes,
-    resample_segments,
     clean_str,
 )
 from utils.torch_utils import torch_distributed_zero_first
@@ -481,7 +478,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Read cache
         cache.pop("hash")  # remove hash
         cache.pop("version")  # remove version
-        labels, shapes, self.segments = zip(*cache.values())
+        labels, shapes = zip(*cache.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
         self.img_files = list(cache.keys())  # update
@@ -560,7 +557,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 im = Image.open(im_file)
                 im.verify()  # PIL verify
                 shape = exif_size(im)  # image size
-                segments = []  # instance segments
                 assert (shape[0] > 9) & (shape[1] > 9), f"image size {shape} <10 pixels"
                 assert im.format.lower() in img_formats, f"invalid image format {im.format}"
 
@@ -569,14 +565,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     nf += 1  # label found
                     with open(lb_file, "r") as f:
                         l = [x.split() for x in f.read().strip().splitlines()]
-                        if any([len(x) > 8 for x in l]):  # is segment
-                            classes = np.array([x[0] for x in l], dtype=np.float32)
-                            segments = [
-                                np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in l
-                            ]  # (cls, xy1...)
-                            l = np.concatenate(
-                                (classes.reshape(-1, 1), segments2boxes(segments)), 1
-                            )  # (cls, xywh)
                         l = np.array(l, dtype=np.float32)
                     if len(l):
                         assert l.shape[1] == 5, "labels require 5 columns each"
@@ -591,7 +579,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 else:
                     nm += 1  # label missing
                     l = np.zeros((0, 5), dtype=np.float32)
-                x[im_file] = [l, shape, segments]
+                x[im_file] = [l, shape]
             except Exception as e:
                 nc += 1
                 print(f"{prefix}WARNING: Ignoring corrupted image and/or label {im_file}: {e}")
@@ -682,20 +670,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             # Apply cutouts
             # if random.random() < 0.9:
             #     labels = cutout(img, labels)
-
-            if random.random() < hyp["paste_in"]:
-                sample_labels, sample_images, sample_masks = [], [], []
-                while len(sample_labels) < 30:
-                    sample_labels_, sample_images_, sample_masks_ = load_samples(
-                        self, random.randint(0, len(self.labels) - 1)
-                    )
-                    sample_labels += sample_labels_
-                    sample_images += sample_images_
-                    sample_masks += sample_masks_
-                    # print(len(sample_labels))
-                    if len(sample_labels) == 0:
-                        break
-                labels = pastein(img, labels, sample_labels, sample_images, sample_masks)
 
         nL = len(labels)  # number of labels
         if nL:
@@ -825,7 +799,7 @@ def hist_equalize(img, clahe=True, bgr=False):
 def load_mosaic(self, index):
     # loads images in a 4-mosaic
 
-    labels4, segments4 = [], []
+    labels4 = []
     s = self.img_size
     yc, xc = [int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border]  # mosaic center x, y
     indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
@@ -865,31 +839,23 @@ def load_mosaic(self, index):
         padh = y1a - y1b
 
         # Labels
-        labels, segments = self.labels[index].copy(), self.segments[index].copy()
+        labels = self.labels[index].copy()
         if labels.size:
             labels[:, 1:] = xywhn2xyxy(
                 labels[:, 1:], w, h, padw, padh
             )  # normalized xywh to pixel xyxy format
-            segments = [xyn2xy(x, w, h, padw, padh) for x in segments]
         labels4.append(labels)
-        segments4.extend(segments)
 
     # Concat/clip labels
-    labels4 = np.concatenate(labels4, 0)
-    for x in (labels4[:, 1:], *segments4):
-        np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
-    # img4, labels4 = replicate(img4, labels4)  # replicate
+    if len(labels4):
+        labels4 = np.concatenate(labels4, 0)
+        np.clip(labels4[:, 1:], 0, 2 * s, out=labels4[:, 1:])  # use with random_perspective
+        # img4, labels4 = replicate(img4, labels4)  # replicate
 
     # Augment
-    # img4, labels4, segments4 = remove_background(img4, labels4, segments4)
-    # sample_segments(img4, labels4, segments4, probability=self.hyp['copy_paste'])
-    img4, labels4, segments4 = copy_paste(
-        img4, labels4, segments4, probability=self.hyp["copy_paste"]
-    )
     img4, labels4 = random_perspective(
         img4,
         labels4,
-        segments4,
         degrees=self.hyp["degrees"],
         translate=self.hyp["translate"],
         scale=self.hyp["scale"],
@@ -904,7 +870,7 @@ def load_mosaic(self, index):
 def load_mosaic9(self, index):
     # loads images in a 9-mosaic
 
-    labels9, segments9 = [], []
+    labels9 = []
     s = self.img_size
     indices = [index] + random.choices(self.indices, k=8)  # 8 additional image indices
     for i, index in enumerate(indices):
@@ -939,14 +905,12 @@ def load_mosaic9(self, index):
         x1, y1, x2, y2 = [max(x, 0) for x in c]  # allocate coords
 
         # Labels
-        labels, segments = self.labels[index].copy(), self.segments[index].copy()
+        labels = self.labels[index].copy()
         if labels.size:
             labels[:, 1:] = xywhn2xyxy(
                 labels[:, 1:], w, h, padx, pady
             )  # normalized xywh to pixel xyxy format
-            segments = [xyn2xy(x, w, h, padx, pady) for x in segments]
         labels9.append(labels)
-        segments9.extend(segments)
 
         # Image
         img9[y1:y2, x1:x2] = img[y1 - pady :, x1 - padx :]  # img9[ymin:ymax, xmin:xmax]
@@ -957,25 +921,18 @@ def load_mosaic9(self, index):
     img9 = img9[yc : yc + 2 * s, xc : xc + 2 * s]
 
     # Concat/clip labels
-    labels9 = np.concatenate(labels9, 0)
-    labels9[:, [1, 3]] -= xc
-    labels9[:, [2, 4]] -= yc
-    c = np.array([xc, yc])  # centers
-    segments9 = [x - c for x in segments9]
+    if len(labels9):
+        labels9 = np.concatenate(labels9, 0)
+        labels9[:, [1, 3]] -= xc
+        labels9[:, [2, 4]] -= yc
 
-    for x in (labels9[:, 1:], *segments9):
-        np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
-    # img9, labels9 = replicate(img9, labels9)  # replicate
+        np.clip(labels9[:, 1:], 0, 2 * s, out=labels9[:, 1:])  # use with random_perspective
+        # img9, labels9 = replicate(img9, labels9)  # replicate
 
     # Augment
-    # img9, labels9, segments9 = remove_background(img9, labels9, segments9)
-    img9, labels9, segments9 = copy_paste(
-        img9, labels9, segments9, probability=self.hyp["copy_paste"]
-    )
     img9, labels9 = random_perspective(
         img9,
         labels9,
-        segments9,
         degrees=self.hyp["degrees"],
         translate=self.hyp["translate"],
         scale=self.hyp["scale"],
@@ -985,153 +942,6 @@ def load_mosaic9(self, index):
     )  # border to remove
 
     return img9, labels9
-
-
-def load_samples(self, index):
-    # loads images in a 4-mosaic
-
-    labels4, segments4 = [], []
-    s = self.img_size
-    yc, xc = [int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border]  # mosaic center x, y
-    indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
-    for i, index in enumerate(indices):
-        # Load image
-        img, _, (h, w) = load_image(self, index)
-
-        # place img in img4
-        if i == 0:  # top left
-            img4 = np.full(
-                (s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8
-            )  # base image with 4 tiles
-            x1a, y1a, x2a, y2a = (
-                max(xc - w, 0),
-                max(yc - h, 0),
-                xc,
-                yc,
-            )  # xmin, ymin, xmax, ymax (large image)
-            x1b, y1b, x2b, y2b = (
-                w - (x2a - x1a),
-                h - (y2a - y1a),
-                w,
-                h,
-            )  # xmin, ymin, xmax, ymax (small image)
-        elif i == 1:  # top right
-            x1a, y1a, x2a, y2a = xc, max(yc - h, 0), min(xc + w, s * 2), yc
-            x1b, y1b, x2b, y2b = 0, h - (y2a - y1a), min(w, x2a - x1a), h
-        elif i == 2:  # bottom left
-            x1a, y1a, x2a, y2a = max(xc - w, 0), yc, xc, min(s * 2, yc + h)
-            x1b, y1b, x2b, y2b = w - (x2a - x1a), 0, w, min(y2a - y1a, h)
-        elif i == 3:  # bottom right
-            x1a, y1a, x2a, y2a = xc, yc, min(xc + w, s * 2), min(s * 2, yc + h)
-            x1b, y1b, x2b, y2b = 0, 0, min(w, x2a - x1a), min(y2a - y1a, h)
-
-        img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
-        padw = x1a - x1b
-        padh = y1a - y1b
-
-        # Labels
-        labels, segments = self.labels[index].copy(), self.segments[index].copy()
-        if labels.size:
-            labels[:, 1:] = xywhn2xyxy(
-                labels[:, 1:], w, h, padw, padh
-            )  # normalized xywh to pixel xyxy format
-            segments = [xyn2xy(x, w, h, padw, padh) for x in segments]
-        labels4.append(labels)
-        segments4.extend(segments)
-
-    # Concat/clip labels
-    labels4 = np.concatenate(labels4, 0)
-    for x in (labels4[:, 1:], *segments4):
-        np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
-    # img4, labels4 = replicate(img4, labels4)  # replicate
-
-    # Augment
-    # img4, labels4, segments4 = remove_background(img4, labels4, segments4)
-    sample_labels, sample_images, sample_masks = sample_segments(
-        img4, labels4, segments4, probability=0.5
-    )
-
-    return sample_labels, sample_images, sample_masks
-
-
-def copy_paste(img, labels, segments, probability=0.5):
-    # Implement Copy-Paste augmentation https://arxiv.org/abs/2012.07177, labels as nx5 np.array(cls, xyxy)
-    n = len(segments)
-    if probability and n:
-        h, w, c = img.shape  # height, width, channels
-        im_new = np.zeros(img.shape, np.uint8)
-        for j in random.sample(range(n), k=round(probability * n)):
-            l, s = labels[j], segments[j]
-            box = w - l[3], l[2], w - l[1], l[4]
-            ioa = bbox_ioa(box, labels[:, 1:5])  # intersection over area
-            if (ioa < 0.30).all():  # allow 30% obscuration of existing labels
-                labels = np.concatenate((labels, [[l[0], *box]]), 0)
-                segments.append(np.concatenate((w - s[:, 0:1], s[:, 1:2]), 1))
-                cv2.drawContours(
-                    im_new, [segments[j].astype(np.int32)], -1, (255, 255, 255), cv2.FILLED
-                )
-
-        result = cv2.bitwise_and(src1=img, src2=im_new)
-        result = cv2.flip(result, 1)  # augment segments (flip left-right)
-        i = result > 0  # pixels to replace
-        # i[:, :] = result.max(2).reshape(h, w, 1)  # act over ch
-        img[i] = result[i]  # cv2.imwrite('debug.jpg', img)  # debug
-
-    return img, labels, segments
-
-
-def remove_background(img, labels, segments):
-    # Implement Copy-Paste augmentation https://arxiv.org/abs/2012.07177, labels as nx5 np.array(cls, xyxy)
-    n = len(segments)
-    h, w, c = img.shape  # height, width, channels
-    im_new = np.zeros(img.shape, np.uint8)
-    img_new = np.ones(img.shape, np.uint8) * 114
-    for j in range(n):
-        cv2.drawContours(im_new, [segments[j].astype(np.int32)], -1, (255, 255, 255), cv2.FILLED)
-
-        result = cv2.bitwise_and(src1=img, src2=im_new)
-
-        i = result > 0  # pixels to replace
-        img_new[i] = result[i]  # cv2.imwrite('debug.jpg', img)  # debug
-
-    return img_new, labels, segments
-
-
-def sample_segments(img, labels, segments, probability=0.5):
-    # Implement Copy-Paste augmentation https://arxiv.org/abs/2012.07177, labels as nx5 np.array(cls, xyxy)
-    n = len(segments)
-    sample_labels = []
-    sample_images = []
-    sample_masks = []
-    if probability and n:
-        h, w, c = img.shape  # height, width, channels
-        for j in random.sample(range(n), k=round(probability * n)):
-            l, s = labels[j], segments[j]
-            box = (
-                l[1].astype(int).clip(0, w - 1),
-                l[2].astype(int).clip(0, h - 1),
-                l[3].astype(int).clip(0, w - 1),
-                l[4].astype(int).clip(0, h - 1),
-            )
-
-            # print(box)
-            if (box[2] <= box[0]) or (box[3] <= box[1]):
-                continue
-
-            sample_labels.append(l[0])
-
-            mask = np.zeros(img.shape, np.uint8)
-
-            cv2.drawContours(mask, [segments[j].astype(np.int32)], -1, (255, 255, 255), cv2.FILLED)
-            sample_masks.append(mask[box[1] : box[3], box[0] : box[2], :])
-
-            result = cv2.bitwise_and(src1=img, src2=mask)
-            i = result > 0  # pixels to replace
-            mask[i] = result[i]  # cv2.imwrite('debug.jpg', img)  # debug
-            # print(box)
-            sample_images.append(mask[box[1] : box[3], box[0] : box[2], :])
-
-    return sample_labels, sample_images, sample_masks
 
 
 def replicate(img, labels):
@@ -1147,7 +957,6 @@ def replicate(img, labels):
         x1a, y1a, x2a, y2a = [xc, yc, xc + bw, yc + bh]
         img[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
         labels = np.append(labels, [[labels[i, 0], x1a, y1a, x2a, y2a]], axis=0)
-
     return img, labels
 
 
@@ -1197,7 +1006,6 @@ def letterbox(
 def random_perspective(
     img,
     targets=(),
-    segments=(),
     degrees=10,
     translate=0.1,
     scale=0.1,
@@ -1256,44 +1064,25 @@ def random_perspective(
     # Transform label coordinates
     n = len(targets)
     if n:
-        use_segments = any(x.any() for x in segments)
         new = np.zeros((n, 4))
-        if use_segments:  # warp segments
-            segments = resample_segments(segments)  # upsample
-            for i, segment in enumerate(segments):
-                xy = np.ones((len(segment), 3))
-                xy[:, :2] = segment
-                xy = xy @ M.T  # transform
-                xy = (
-                    xy[:, :2] / xy[:, 2:3] if perspective else xy[:, :2]
-                )  # perspective rescale or affine
+        xy = np.ones((n * 4, 3))
+        xy[:, :2] = targets[:, [1, 2, 3, 4, 1, 4, 3, 2]].reshape(n * 4, 2)  # x1y1, x2y2, x1y2, x2y1
+        xy = xy @ M.T  # transform
+        xy = (xy[:, :2] / xy[:, 2:3] if perspective else xy[:, :2]).reshape(
+            n, 8
+        )  # perspective rescale or affine
 
-                # clip
-                new[i] = segment2box(xy, width, height)
+        # create new boxes
+        x = xy[:, [0, 2, 4, 6]]
+        y = xy[:, [1, 3, 5, 7]]
+        new = np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T
 
-        else:  # warp boxes
-            xy = np.ones((n * 4, 3))
-            xy[:, :2] = targets[:, [1, 2, 3, 4, 1, 4, 3, 2]].reshape(
-                n * 4, 2
-            )  # x1y1, x2y2, x1y2, x2y1
-            xy = xy @ M.T  # transform
-            xy = (xy[:, :2] / xy[:, 2:3] if perspective else xy[:, :2]).reshape(
-                n, 8
-            )  # perspective rescale or affine
-
-            # create new boxes
-            x = xy[:, [0, 2, 4, 6]]
-            y = xy[:, [1, 3, 5, 7]]
-            new = np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T
-
-            # clip
-            new[:, [0, 2]] = new[:, [0, 2]].clip(0, width)
-            new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
+        # clip
+        new[:, [0, 2]] = new[:, [0, 2]].clip(0, width)
+        new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
 
         # filter candidates
-        i = box_candidates(
-            box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.01 if use_segments else 0.10
-        )
+        i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.10)
         targets = targets[i]
         targets[:, 1:5] = new[i]
 
@@ -1358,66 +1147,6 @@ def cutout(image, labels):
             box = np.array([xmin, ymin, xmax, ymax], dtype=np.float32)
             ioa = bbox_ioa(box, labels[:, 1:5])  # intersection over area
             labels = labels[ioa < 0.60]  # remove >60% obscured labels
-
-    return labels
-
-
-def pastein(image, labels, sample_labels, sample_images, sample_masks):
-    # Applies image cutout augmentation https://arxiv.org/abs/1708.04552
-    h, w = image.shape[:2]
-
-    # create random masks
-    scales = [0.75] * 2 + [0.5] * 4 + [0.25] * 4 + [0.125] * 4 + [0.0625] * 6  # image size fraction
-    for s in scales:
-        if random.random() < 0.2:
-            continue
-        mask_h = random.randint(1, int(h * s))
-        mask_w = random.randint(1, int(w * s))
-
-        # box
-        xmin = max(0, random.randint(0, w) - mask_w // 2)
-        ymin = max(0, random.randint(0, h) - mask_h // 2)
-        xmax = min(w, xmin + mask_w)
-        ymax = min(h, ymin + mask_h)
-
-        box = np.array([xmin, ymin, xmax, ymax], dtype=np.float32)
-        if len(labels):
-            ioa = bbox_ioa(box, labels[:, 1:5])  # intersection over area
-        else:
-            ioa = np.zeros(1)
-
-        if (
-            (ioa < 0.30).all() and len(sample_labels) and (xmax > xmin + 20) and (ymax > ymin + 20)
-        ):  # allow 30% obscuration of existing labels
-            sel_ind = random.randint(0, len(sample_labels) - 1)
-            # print(len(sample_labels))
-            # print(sel_ind)
-            # print((xmax-xmin, ymax-ymin))
-            # print(image[ymin:ymax, xmin:xmax].shape)
-            # print([[sample_labels[sel_ind], *box]])
-            # print(labels.shape)
-            hs, ws, cs = sample_images[sel_ind].shape
-            r_scale = min((ymax - ymin) / hs, (xmax - xmin) / ws)
-            r_w = int(ws * r_scale)
-            r_h = int(hs * r_scale)
-
-            if (r_w > 10) and (r_h > 10):
-                r_mask = cv2.resize(sample_masks[sel_ind], (r_w, r_h))
-                r_image = cv2.resize(sample_images[sel_ind], (r_w, r_h))
-                temp_crop = image[ymin : ymin + r_h, xmin : xmin + r_w]
-                m_ind = r_mask > 0
-                if m_ind.astype(np.int).sum() > 60:
-                    temp_crop[m_ind] = r_image[m_ind]
-                    # print(sample_labels[sel_ind])
-                    # print(sample_images[sel_ind].shape)
-                    # print(temp_crop.shape)
-                    box = np.array([xmin, ymin, xmin + r_w, ymin + r_h], dtype=np.float32)
-                    if len(labels):
-                        labels = np.concatenate((labels, [[sample_labels[sel_ind], *box]]), 0)
-                    else:
-                        labels = np.array([[sample_labels[sel_ind], *box]])
-
-                    image[ymin : ymin + r_h, xmin : xmin + r_w] = temp_crop
 
     return labels
 
@@ -1535,10 +1264,3 @@ def autosplit(path="../coco", weights=(0.9, 0.1, 0.0), annotated_only=False):
         if not annotated_only or Path(img2label_paths([str(img)])[0]).exists():  # check label
             with open(path / txt[i], "a") as f:
                 f.write(str(img) + "\n")  # add image to txt file
-
-
-def load_segmentations(self, index):
-    key = "/work/handsomejw66/coco17/" + self.img_files[index]
-    # print(key)
-    # /work/handsomejw66/coco17/
-    return self.segs[key]
