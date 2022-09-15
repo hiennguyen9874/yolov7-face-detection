@@ -5,8 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.general import (bbox_alpha_iou, bbox_iou, box_ciou, box_diou,
-                           box_giou, box_iou, xywh2xyxy)
+from utils.general import bbox_alpha_iou, bbox_iou, box_ciou, box_diou, box_giou, box_iou, xywh2xyxy
 from utils.torch_utils import is_parallel
 
 
@@ -483,7 +482,6 @@ class ComputeLoss:
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["obj_pw"]], device=device))
-        BCElandmark = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["lmks_pw"]], device=device))
         landmarks_loss = LandmarksLoss(1.0)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
@@ -501,18 +499,9 @@ class ComputeLoss:
         # self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.1, .05])  # P3-P7
         # self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.5, 0.4, .1])  # P3-P7
         self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
-        (
-            self.BCEcls,
-            self.BCEobj,
-            self.BCElandmark,
-            self.landmarks_loss,
-            self.gr,
-            self.hyp,
-            self.autobalance,
-        ) = (
+        (self.BCEcls, self.BCEobj, self.landmarks_loss, self.gr, self.hyp, self.autobalance,) = (
             BCEcls,
             BCEobj,
-            BCElandmark,
             landmarks_loss,
             model.gr,
             h,
@@ -523,8 +512,7 @@ class ComputeLoss:
 
     def __call__(self, p, targets):  # predictions, targets, model
         device = targets.device
-        lcls, lbox, lobj, llmks, llmks_mask = (
-            torch.zeros(1, device=device),
+        lcls, lbox, lobj, llmks = (
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
@@ -536,7 +524,6 @@ class ComputeLoss:
         for i, pi in enumerate(p):  # layer index, layer predictions
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
-            tlmks_conf = torch.zeros_like(pi[..., 16], device=device)
 
             n = b.shape[0]  # number of targets
             if n:
@@ -555,8 +542,6 @@ class ComputeLoss:
                 tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * iou.detach().clamp(0).type(
                     tobj.dtype
                 )  # iou ratio
-
-                tlmks_conf[b, a, gj, gi] = (tlmks[i] > 0).all(dim=1).type(tlmks_conf.dtype)
 
                 # Classification
                 if self.nc > 1:  # cls loss (only if multiple classes)
@@ -579,8 +564,6 @@ class ComputeLoss:
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
 
-            llmks_mask += self.BCElandmark(pi[..., 16], tlmks_conf)
-
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
 
@@ -588,11 +571,10 @@ class ComputeLoss:
         lobj *= self.hyp["obj"]
         lcls *= self.hyp["cls"]
         llmks *= self.hyp["lmks"]
-        llmks_mask *= self.hyp["lmks_mask"]
         bs = tobj.shape[0]  # batch size
 
-        loss = lbox + lobj + lcls + llmks + llmks_mask
-        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, llmks_mask, loss)).detach()
+        loss = lbox + lobj + lcls + llmks
+        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, loss)).detach()
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
@@ -690,7 +672,6 @@ class ComputeLossOTA:
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["obj_pw"]], device=device))
-        BCElandmark = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["lmks_pw"]], device=device))
         landmarks_loss = LandmarksLoss(1.0)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
@@ -706,18 +687,9 @@ class ComputeLossOTA:
         det = model.module.model[-1] if is_parallel(model) else model.model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
-        (
-            self.BCEcls,
-            self.BCEobj,
-            self.BCElandmark,
-            self.landmarks_loss,
-            self.gr,
-            self.hyp,
-            self.autobalance,
-        ) = (
+        (self.BCEcls, self.BCEobj, self.landmarks_loss, self.gr, self.hyp, self.autobalance,) = (
             BCEcls,
             BCEobj,
-            BCElandmark,
             landmarks_loss,
             model.gr,
             h,
@@ -728,8 +700,7 @@ class ComputeLossOTA:
 
     def __call__(self, p, targets, imgs):  # predictions, targets, model
         device = targets.device
-        lcls, lbox, lobj, llmks, llmks_mask = (
-            torch.zeros(1, device=device),
+        lcls, lbox, lobj, llmks = (
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
@@ -745,7 +716,6 @@ class ComputeLossOTA:
         for i, pi in enumerate(p):  # layer index, layer predictions
             b, a, gj, gi = bs[i], as_[i], gjs[i], gis[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
-            tlmks_conf = torch.zeros_like(pi[..., 16], device=device)
 
             n = b.shape[0]  # number of targets
             if n:
@@ -796,10 +766,6 @@ class ComputeLossOTA:
 
                 llmks += self.landmarks_loss(plmks, selected_tlmks, selected_tlmks_mask)
 
-                tlmks_conf[b, a, gj, gi] = (
-                    (selected_tlmks_mask > 0).all(dim=1).type(tlmks_conf.dtype)
-                )
-
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
@@ -809,19 +775,16 @@ class ComputeLossOTA:
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
 
-            llmks_mask += self.BCElandmark(pi[..., 16], tlmks_conf)
-
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
         lbox *= self.hyp["box"]
         lobj *= self.hyp["obj"]
         lcls *= self.hyp["cls"]
         llmks *= self.hyp["lmks"]
-        llmks_mask *= self.hyp["lmks_mask"]
         bs = tobj.shape[0]  # batch size
 
-        loss = lbox + lobj + lcls + llmks + llmks_mask
-        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, llmks_mask, loss)).detach()
+        loss = lbox + lobj + lcls + llmks
+        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, loss)).detach()
 
     def build_targets(self, p, targets, imgs):
         # indices, anch = self.find_positive(p, targets)

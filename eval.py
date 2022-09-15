@@ -141,14 +141,13 @@ def detect(save_img=False):
 
                 # Write results
                 for det_per_box in reversed(det):
-                    xyxy, conf, cls, lmks, lmks_mask = (
+                    xyxy, conf, cls, lmks = (
                         det_per_box[0:4],
                         det_per_box[4],
                         det_per_box[5],
                         det_per_box[6:16],
                         det_per_box[16:17],
                     )
-                    print(conf, cls, lmks, lmks_mask)
                     if save_txt:  # Write to file
                         xywh = (
                             (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
@@ -166,7 +165,7 @@ def detect(save_img=False):
                             color=colors[int(cls)],
                             line_thickness=1,
                             lmks=lmks,
-                            lmks_mask=lmks_mask,
+                            lmks_mask=[1] * lmks.shape[0],
                             lmks_normalized=False,
                             radius=4,
                         )

@@ -8,7 +8,6 @@ warmup_bias_lr: 0.1 # warmup initial bias lr
 box: 0.05 # box loss gain
 lmks_pw: 1.0
 lmks: 0.10 # kpt loss gain
-lmks_mask: 0.5 # kpt loss gain
 cls: 0.3 # cls loss gain
 cls_pw: 1.0 # cls BCELoss positive_weight
 obj: 0.7 # obj loss gain (scale with pixels)

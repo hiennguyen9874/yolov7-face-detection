@@ -6,20 +6,21 @@ from copy import deepcopy
 sys.path.append("./")  # to run '$ python *.py' files in subdirectories
 logger = logging.getLogger(__name__)
 import torch
-from models.common import *
-from models.experimental import *
 from utils.autoanchor import check_anchor_order
-from utils.general import make_divisible, check_file, set_logging
+from utils.general import check_file, make_divisible, set_logging
+from utils.loss import SigmoidBin
 from utils.torch_utils import (
-    time_synchronized,
+    copy_attr,
     fuse_conv_and_bn,
+    initialize_weights,
     model_info,
     scale_img,
-    initialize_weights,
     select_device,
-    copy_attr,
+    time_synchronized,
 )
-from utils.loss import SigmoidBin
+
+from models.common import *
+from models.experimental import *
 
 try:
     import thop  # for FLOPS computation
@@ -375,7 +376,7 @@ class ILandmark(nn.Module):
         self.nlandmark = nlandmark
         self.dw_conv_landmark = dw_conv_landmark
         self.no_det = nc + 5  # number of outputs per anchor for box and class
-        self.no_kpt = 2 * self.nlandmark + 1  ## number of outputs per anchor for keypoints
+        self.no_kpt = 2 * self.nlandmark  ## number of outputs per anchor for keypoints
         self.no = self.no_det + self.no_kpt
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0]) // 2  # number of anchors
@@ -431,7 +432,6 @@ class ILandmark(nn.Module):
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
             x_det = x[i][..., :6]
             x_landmark = x[i][..., 6 : 6 + 2 * self.nlandmark]
-            x_landmark_conf = x[i][..., 6 + 2 * self.nlandmark :]
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
@@ -464,9 +464,8 @@ class ILandmark(nn.Module):
                         ) * self.stride[
                             i
                         ]  # xy
-                        x_landmark_conf = x_landmark_conf.sigmoid()
 
-                    y = torch.cat((xy, wh, y[..., 4:], x_landmark, x_landmark_conf), dim=-1)
+                    y = torch.cat((xy, wh, y[..., 4:], x_landmark), dim=-1)
                 else:  # for YOLOv5 on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
                     xy = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
                     wh = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh

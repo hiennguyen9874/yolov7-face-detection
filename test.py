@@ -139,8 +139,8 @@ def test(
             # Compute loss
             if compute_loss:
                 loss += compute_loss([x.float() for x in train_out], targets)[1][
-                    :5
-                ]  # box, obj, cls, llmks, llmks_mask
+                    :4
+                ]  # box, obj, cls, llmks
 
             out = out[..., :6]
             targets = targets[..., :6]

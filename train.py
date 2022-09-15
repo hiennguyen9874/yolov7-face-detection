@@ -26,35 +26,18 @@ from models.experimental import attempt_load
 from models.yolo import Model
 from utils.autoanchor import check_anchors
 from utils.datasets import create_dataloader
-from utils.general import (
-    check_dataset,
-    check_file,
-    check_git_status,
-    check_img_size,
-    check_requirements,
-    colorstr,
-    fitness,
-    get_latest_run,
-    increment_path,
-    init_seeds,
-    labels_to_class_weights,
-    labels_to_image_weights,
-    one_cycle,
-    print_mutation,
-    set_logging,
-    strip_optimizer,
-)
+from utils.general import (check_dataset, check_file, check_git_status,
+                           check_img_size, check_requirements, colorstr,
+                           fitness, get_latest_run, increment_path, init_seeds,
+                           labels_to_class_weights, labels_to_image_weights,
+                           one_cycle, print_mutation, set_logging,
+                           strip_optimizer)
 from utils.google_utils import attempt_download
 from utils.loss import ComputeLoss, ComputeLossOTA
 from utils.plots import plot_evolution, plot_images, plot_labels, plot_results
-from utils.torch_utils import (
-    ModelEMA,
-    intersect_dicts,
-    is_parallel,
-    load_ckpt,
-    select_device,
-    torch_distributed_zero_first,
-)
+from utils.torch_utils import (ModelEMA, intersect_dicts, is_parallel,
+                               load_ckpt, select_device,
+                               torch_distributed_zero_first)
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 
 logger = logging.getLogger(__name__)
@@ -441,12 +424,12 @@ def train(hyp, opt, device, tb_writer=None):
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(6, device=device)  # mean losses
+        mloss = torch.zeros(5, device=device)  # mean losses
         if rank != -1:
             dataloader.sampler.set_epoch(epoch)
         pbar = enumerate(dataloader)
         logger.info(
-            ("\n" + "%10s" * 10)
+            ("\n" + "%10s" * 9)
             % (
                 "Epoch",
                 "gpu_mem",
@@ -454,7 +437,6 @@ def train(hyp, opt, device, tb_writer=None):
                 "obj",
                 "cls",
                 "lmks",
-                "lmks_mask",
                 "total",
                 "labels",
                 "img_size",
@@ -530,7 +512,7 @@ def train(hyp, opt, device, tb_writer=None):
                 mem = "%.3gG" % (
                     torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0
                 )  # (GB)
-                s = ("%10s" * 2 + "%10.4g" * 8) % (
+                s = ("%10s" * 2 + "%10.4g" * 7) % (
                     "%g/%g" % (epoch, epochs - 1),
                     mem,
                     *mloss,
@@ -590,7 +572,7 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Write
             with open(results_file, "a") as f:
-                f.write(s + "%10.4g" * 9 % results + "\n")  # append metrics, val_loss
+                f.write(s + "%10.4g" * 8 % results + "\n")  # append metrics, val_loss
             if len(opt.name) and opt.bucket:
                 os.system(
                     "gsutil cp %s gs://%s/results/results%s.txt"
@@ -603,7 +585,6 @@ def train(hyp, opt, device, tb_writer=None):
                 "train/obj_loss",
                 "train/cls_loss",
                 "train/llmks_loss",
-                "train/llmks_mask_loss",  # train loss
                 "metrics/precision",
                 "metrics/recall",
                 "metrics/mAP_0.5",
@@ -612,7 +593,6 @@ def train(hyp, opt, device, tb_writer=None):
                 "val/obj_loss",
                 "val/cls_loss",
                 "val/llmks_loss",
-                "val/llmks_mask_loss",  # val loss
                 "x/lr0",
                 "x/lr1",
                 "x/lr2",
