@@ -94,7 +94,6 @@ def create_dataloader(
     world_size=1,
     workers=8,
     image_weights=False,
-    quad=False,
     prefix="",
 ):
     # Make sure only the first process in DDP process the dataset first, and the following others can use the cache
@@ -127,7 +126,7 @@ def create_dataloader(
         num_workers=nw,
         sampler=sampler,
         pin_memory=True,
-        collate_fn=LoadImagesAndLabels.collate_fn4 if quad else LoadImagesAndLabels.collate_fn,
+        collate_fn=LoadImagesAndLabels.collate_fn,
     )
     return dataloader, dataset
 
@@ -564,21 +563,33 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 if os.path.isfile(lb_file):
                     nf += 1  # label found
                     with open(lb_file, "r") as f:
-                        l = [x.split() for x in f.read().strip().splitlines()]
+                        # l = [x.split() ]
+                        l = []
+                        for line_label in f.read().strip().splitlines():
+                            line_label = line_label.split()
+                            if len(line_label) == 5:
+                                line_label = line_label + [0] * 10 + [-1]
+                            elif len(line_label) < 16:
+                                line_label = line_label[:5] + [0] * 10 + [-1]
+                            elif len(line_label) > 16:
+                                line_label = line_label[:16]
+                            l.append(line_label)
                         l = np.array(l, dtype=np.float32)
                     if len(l):
-                        assert l.shape[1] == 5, "labels require 5 columns each"
-                        assert (l >= 0).all(), "negative labels"
+                        assert l.shape[1] == 16, "labels require 16 columns each"
+                        assert (l[..., :5] >= 0).all(), "negative labels"
                         assert (
-                            l[:, 1:] <= 1
+                            l[..., 1:5] <= 1
                         ).all(), "non-normalized or out of bounds coordinate labels"
-                        assert np.unique(l, axis=0).shape[0] == l.shape[0], "duplicate labels"
+                        assert (
+                            np.unique(l[..., :5], axis=0).shape[0] == l.shape[0]
+                        ), "duplicate labels"
                     else:
                         ne += 1  # label empty
-                        l = np.zeros((0, 5), dtype=np.float32)
+                        l = np.zeros((0, 16), dtype=np.float32)
                 else:
                     nm += 1  # label missing
-                    l = np.zeros((0, 5), dtype=np.float32)
+                    l = np.zeros((0, 16), dtype=np.float32)
                 x[im_file] = [l, shape]
             except Exception as e:
                 nc += 1
@@ -614,6 +625,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp["mosaic"]
+
         if mosaic:
             # Load mosaic
             if random.random() < 0.8:
@@ -631,7 +643,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 r = np.random.beta(8.0, 8.0)  # mixup ratio, alpha=beta=8.0
                 img = (img * r + img2 * (1 - r)).astype(np.uint8)
                 labels = np.concatenate((labels, labels2), 0)
-
         else:
             # Load image
             img, (h0, w0), (h, w) = load_image(self, index)
@@ -642,12 +653,15 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             )  # final letterboxed shape
             img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
-
             labels = self.labels[index].copy()
             if labels.size:  # normalized xywh to pixel xyxy format
-                labels[:, 1:] = xywhn2xyxy(
-                    labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
+                labels[:, 1:5] = xywhn2xyxy(
+                    labels[:, 1:5], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
                 )
+                # Landmark x
+                labels[:, 5:15:2] = (ratio[0] * w) * labels[:, 5:15:2] + pad[0]
+                # Landmark y
+                labels[:, 6:15:2] = (ratio[1] * h) * labels[:, 6:15:2] + pad[1]
 
         if self.augment:
             # Augment imagespace
@@ -677,20 +691,25 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             labels[:, [2, 4]] /= img.shape[0]  # normalized height 0-1
             labels[:, [1, 3]] /= img.shape[1]  # normalized width 0-1
 
-        if self.augment:
-            # flip up-down
-            if random.random() < hyp["flipud"]:
-                img = np.flipud(img)
-                if nL:
-                    labels[:, 2] = 1 - labels[:, 2]
+            # Landmark x
+            labels[:, 5:15:2] /= img.shape[1]
+            # Landmark y
+            labels[:, 6:15:2] /= img.shape[0]
 
+        if self.augment:
             # flip left-right
             if random.random() < hyp["fliplr"]:
                 img = np.fliplr(img)
                 if nL:
                     labels[:, 1] = 1 - labels[:, 1]
 
-        labels_out = torch.zeros((nL, 6))
+                    labels[:, 5:15:2] = 1 - labels[:, 5:15:2]
+
+                    labels[:, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14]] = labels[
+                        :, [7, 8, 5, 6, 9, 10, 13, 14, 11, 12]
+                    ]
+
+        labels_out = torch.zeros((nL, 17))
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
@@ -706,43 +725,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         for i, l in enumerate(label):
             l[:, 0] = i  # add target image index for build_targets()
         return torch.stack(img, 0), torch.cat(label, 0), path, shapes
-
-    @staticmethod
-    def collate_fn4(batch):
-        img, label, path, shapes = zip(*batch)  # transposed
-        n = len(shapes) // 4
-        img4, label4, path4, shapes4 = [], [], path[:n], shapes[:n]
-
-        ho = torch.tensor([[0.0, 0, 0, 1, 0, 0]])
-        wo = torch.tensor([[0.0, 0, 1, 0, 0, 0]])
-        s = torch.tensor([[1, 1, 0.5, 0.5, 0.5, 0.5]])  # scale
-        for i in range(n):  # zidane torch.zeros(16,3,720,1280)  # BCHW
-            i *= 4
-            if random.random() < 0.5:
-                im = F.interpolate(
-                    img[i].unsqueeze(0).float(),
-                    scale_factor=2.0,
-                    mode="bilinear",
-                    align_corners=False,
-                )[0].type(img[i].type())
-                l = label[i]
-            else:
-                im = torch.cat(
-                    (torch.cat((img[i], img[i + 1]), 1), torch.cat((img[i + 2], img[i + 3]), 1)), 2
-                )
-                l = (
-                    torch.cat(
-                        (label[i], label[i + 1] + ho, label[i + 2] + wo, label[i + 3] + ho + wo), 0
-                    )
-                    * s
-                )
-            img4.append(im)
-            label4.append(l)
-
-        for i, l in enumerate(label4):
-            l[:, 0] = i  # add target image index for build_targets()
-
-        return torch.stack(img4, 0), torch.cat(label4, 0), path4, shapes4
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
@@ -841,9 +823,14 @@ def load_mosaic(self, index):
         # Labels
         labels = self.labels[index].copy()
         if labels.size:
-            labels[:, 1:] = xywhn2xyxy(
-                labels[:, 1:], w, h, padw, padh
+            labels[:, 1:5] = xywhn2xyxy(
+                labels[:, 1:5], w, h, padw, padh
             )  # normalized xywh to pixel xyxy format
+            # Landmark x
+            labels[:, 5:15:2] = w * labels[:, 5:15:2] + padw
+            # Landmark y
+            labels[:, 6:15:2] = h * labels[:, 6:15:2] + padh
+
         labels4.append(labels)
 
     # Concat/clip labels
@@ -851,6 +838,12 @@ def load_mosaic(self, index):
         labels4 = np.concatenate(labels4, 0)
         np.clip(labels4[:, 1:], 0, 2 * s, out=labels4[:, 1:])  # use with random_perspective
         # img4, labels4 = replicate(img4, labels4)  # replicate
+
+        is_out_landmarks = (labels4[:, 5:15] < 0).any(axis=1, keepdims=True) | (
+            labels4[:, 5:15] > 2 * s
+        ).any(axis=1, keepdims=True)
+
+        labels4[:, 15:16] = labels4[:, 15:16] * (~is_out_landmarks) + -1 * is_out_landmarks
 
     # Augment
     img4, labels4 = random_perspective(
@@ -910,6 +903,10 @@ def load_mosaic9(self, index):
             labels[:, 1:] = xywhn2xyxy(
                 labels[:, 1:], w, h, padx, pady
             )  # normalized xywh to pixel xyxy format
+            # Landmark x
+            labels[:, 5:15:2] = w * labels[:, 5:15:2] + padx
+            # Landmark y
+            labels[:, 6:15:2] = h * labels[:, 6:15:2] + pady
         labels9.append(labels)
 
         # Image
@@ -926,8 +923,19 @@ def load_mosaic9(self, index):
         labels9[:, [1, 3]] -= xc
         labels9[:, [2, 4]] -= yc
 
+        # Landmark x
+        labels9[:, 5:15:2] -= xc
+        # Landmark y
+        labels9[:, 6:15:2] -= yc
+
         np.clip(labels9[:, 1:], 0, 2 * s, out=labels9[:, 1:])  # use with random_perspective
         # img9, labels9 = replicate(img9, labels9)  # replicate
+
+        is_out_landmarks = (labels9[:, 5:15] < 0).any(axis=1, keepdims=True) | (
+            labels9[:, 5:15] > 2 * s
+        ).any(axis=1, keepdims=True)
+
+        labels9[:, 15:16] = labels9[:, 15:16] * (~is_out_landmarks) + -1 * is_out_landmarks
 
     # Augment
     img9, labels9 = random_perspective(
@@ -1085,6 +1093,35 @@ def random_perspective(
         i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.10)
         targets = targets[i]
         targets[:, 1:5] = new[i]
+
+        if targets.shape[1] > 5:
+            landmarks = targets[..., 5:15]
+            landmarks_mask = targets[..., 15:16]
+
+            temp_landmarks = np.ones((landmarks_mask.shape[0] * landmarks.shape[1] // 2, 3))
+            temp_landmarks[:, :2] = landmarks.reshape(-1, 2)
+            temp_landmarks = temp_landmarks @ M.T
+
+            if perspective:
+                temp_landmarks = (temp_landmarks[:, :2] / temp_landmarks[:, 2:3]).reshape(
+                    landmarks_mask.shape[0], landmarks.shape[1]
+                )
+            else:
+                temp_landmarks = temp_landmarks[:, :2].reshape(
+                    landmarks_mask.shape[0], landmarks.shape[1]
+                )
+            landmarks = temp_landmarks
+
+            is_out_landmarks = (
+                (landmarks < 0).any(axis=1, keepdims=True)
+                | (landmarks[..., 0::2] > img.shape[1]).any(axis=1, keepdims=True)
+                | (landmarks[..., 1::2] > img.shape[0]).any(axis=1, keepdims=True)
+            )
+
+            landmarks_mask = landmarks_mask * (~is_out_landmarks) + -1 * is_out_landmarks
+
+            targets[..., 5:15] = landmarks
+            targets[..., 15:16] = landmarks_mask
 
     return img, targets
 

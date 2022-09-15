@@ -53,6 +53,7 @@ from utils.torch_utils import (
     intersect_dicts,
     torch_distributed_zero_first,
     is_parallel,
+    load_ckpt,
 )
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 
@@ -134,8 +135,12 @@ def train(hyp, opt, device, tb_writer=None):
             ["anchor"] if (opt.cfg or hyp.get("anchors")) and not opt.resume else []
         )  # exclude keys
         state_dict = ckpt["model"].float().state_dict()  # to FP32
+
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(state_dict, strict=False)  # load
+
+        # model = load_ckpt(model, state_dict)
+
         logger.info(
             "Transferred %g/%g items from %s" % (len(state_dict), len(model.state_dict()), weights)
         )  # report
@@ -319,7 +324,6 @@ def train(hyp, opt, device, tb_writer=None):
         world_size=opt.world_size,
         workers=opt.workers,
         image_weights=opt.image_weights,
-        quad=opt.quad,
         prefix=colorstr("train: "),
     )
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
@@ -437,13 +441,24 @@ def train(hyp, opt, device, tb_writer=None):
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(4, device=device)  # mean losses
+        mloss = torch.zeros(6, device=device)  # mean losses
         if rank != -1:
             dataloader.sampler.set_epoch(epoch)
         pbar = enumerate(dataloader)
         logger.info(
-            ("\n" + "%10s" * 8)
-            % ("Epoch", "gpu_mem", "box", "obj", "cls", "total", "labels", "img_size")
+            ("\n" + "%10s" * 10)
+            % (
+                "Epoch",
+                "gpu_mem",
+                "box",
+                "obj",
+                "cls",
+                "lmks",
+                "lmks_mask",
+                "total",
+                "labels",
+                "img_size",
+            )
         )
         if rank in [-1, 0]:
             pbar = tqdm(pbar, total=nb)  # progress bar
@@ -497,8 +512,6 @@ def train(hyp, opt, device, tb_writer=None):
                     )  # loss scaled by batch_size
                 if rank != -1:
                     loss *= opt.world_size  # gradient averaged between devices in DDP mode
-                if opt.quad:
-                    loss *= 4.0
 
             # Backward
             scaler.scale(loss).backward()
@@ -517,7 +530,7 @@ def train(hyp, opt, device, tb_writer=None):
                 mem = "%.3gG" % (
                     torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0
                 )  # (GB)
-                s = ("%10s" * 2 + "%10.4g" * 6) % (
+                s = ("%10s" * 2 + "%10.4g" * 8) % (
                     "%g/%g" % (epoch, epochs - 1),
                     mem,
                     *mloss,
@@ -577,7 +590,7 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Write
             with open(results_file, "a") as f:
-                f.write(s + "%10.4g" * 7 % results + "\n")  # append metrics, val_loss
+                f.write(s + "%10.4g" * 9 % results + "\n")  # append metrics, val_loss
             if len(opt.name) and opt.bucket:
                 os.system(
                     "gsutil cp %s gs://%s/results/results%s.txt"
@@ -588,14 +601,18 @@ def train(hyp, opt, device, tb_writer=None):
             tags = [
                 "train/box_loss",
                 "train/obj_loss",
-                "train/cls_loss",  # train loss
+                "train/cls_loss",
+                "train/llmks_loss",
+                "train/llmks_mask_loss",  # train loss
                 "metrics/precision",
                 "metrics/recall",
                 "metrics/mAP_0.5",
                 "metrics/mAP_0.5:0.95",
                 "val/box_loss",
                 "val/obj_loss",
-                "val/cls_loss",  # val loss
+                "val/cls_loss",
+                "val/llmks_loss",
+                "val/llmks_mask_loss",  # val loss
                 "x/lr0",
                 "x/lr1",
                 "x/lr2",
@@ -749,7 +766,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sync-bn", action="store_true", help="use SyncBatchNorm, only available in DDP mode"
     )
-    parser.add_argument("--local_rank", type=int, default=-1, help="DDP parameter, do not modify")
     parser.add_argument(
         "--workers", type=int, default=8, help="maximum number of dataloader workers"
     )
@@ -759,7 +775,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--exist-ok", action="store_true", help="existing project/name ok, do not increment"
     )
-    parser.add_argument("--quad", action="store_true", help="quad dataloader")
     parser.add_argument("--linear-lr", action="store_true", help="linear LR")
     parser.add_argument(
         "--label-smoothing", type=float, default=0.0, help="Label smoothing epsilon"
@@ -792,6 +807,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
     # Set DDP variables
+    opt.local_rank = int(os.environ["LOCAL_RANK"]) if "LOCAL_RANK" in os.environ else -1
     opt.world_size = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
     opt.global_rank = int(os.environ["RANK"]) if "RANK" in os.environ else -1
     set_logging(opt.global_rank)
@@ -836,6 +852,7 @@ if __name__ == "__main__":
     # DDP mode
     opt.total_batch_size = opt.batch_size
     device = select_device(opt.device, batch_size=opt.batch_size)
+
     if opt.local_rank != -1:
         assert torch.cuda.device_count() > opt.local_rank
         torch.cuda.set_device(opt.local_rank)
@@ -894,8 +911,6 @@ if __name__ == "__main__":
             "fliplr": (0, 0.0, 1.0),  # image flip left-right (probability)
             "mosaic": (1, 0.0, 1.0),  # image mixup (probability)
             "mixup": (1, 0.0, 1.0),  # image mixup (probability)
-            "copy_paste": (1, 0.0, 1.0),  # segment copy-paste (probability)
-            "paste_in": (1, 0.0, 1.0),
         }  # segment copy-paste (probability)
 
         with open(opt.hyp, errors="ignore") as f:

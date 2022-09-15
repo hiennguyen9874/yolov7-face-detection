@@ -363,6 +363,133 @@ class IKeypoint(nn.Module):
         return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
 
 
+class ILandmark(nn.Module):
+    stride = None  # strides computed during build
+    export = False  # onnx export
+
+    def __init__(
+        self, nc=80, anchors=(), nlandmark=5, ch=(), inplace=True, dw_conv_landmark=False
+    ):  # detection layer
+        super(ILandmark, self).__init__()
+        self.nc = nc  # number of classes
+        self.nlandmark = nlandmark
+        self.dw_conv_landmark = dw_conv_landmark
+        self.no_det = nc + 5  # number of outputs per anchor for box and class
+        self.no_kpt = 2 * self.nlandmark + 1  ## number of outputs per anchor for keypoints
+        self.no = self.no_det + self.no_kpt
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        self.grid = [torch.zeros(1)] * self.nl  # init grid
+        self.flip_test = False
+        a = torch.tensor(anchors).float().view(self.nl, -1, 2)
+        self.register_buffer("anchors", a)  # shape(nl,na,2)
+        self.register_buffer(
+            "anchor_grid", a.clone().view(self.nl, 1, -1, 1, 1, 2)
+        )  # shape(nl,1,na,1,1,2)
+        self.m = nn.ModuleList(nn.Conv2d(x, self.no_det * self.na, 1) for x in ch)  # output conv
+
+        self.ia = nn.ModuleList(ImplicitA(x) for x in ch)
+        self.im = nn.ModuleList(ImplicitM(self.no_det * self.na) for _ in ch)
+
+        if self.nlandmark is not None:
+            if self.dw_conv_landmark:  # landmark head is slightly more complex
+                self.m_landmark = nn.ModuleList(
+                    nn.Sequential(
+                        DWConv(x, x, k=3),
+                        Conv(x, x),
+                        DWConv(x, x, k=3),
+                        Conv(x, x),
+                        DWConv(x, x, k=3),
+                        Conv(x, x),
+                        DWConv(x, x, k=3),
+                        Conv(x, x),
+                        DWConv(x, x, k=3),
+                        Conv(x, x),
+                        DWConv(x, x, k=3),
+                        nn.Conv2d(x, self.no_kpt * self.na, 1),
+                    )
+                    for x in ch
+                )
+            else:  # landmark head is a single convolution
+                self.m_landmark = nn.ModuleList(nn.Conv2d(x, self.no_kpt * self.na, 1) for x in ch)
+
+        self.inplace = inplace  # use in-place ops (e.g. slice assignment)
+
+    def forward(self, x):
+        # x = x.copy()  # for profiling
+        z = []  # inference output
+        self.training |= self.export
+        for i in range(self.nl):
+            if self.nlandmark is None or self.nlandmark == 0:
+                x[i] = self.im[i](self.m[i](self.ia[i](x[i])))  # conv
+            else:
+                x[i] = torch.cat(
+                    (self.im[i](self.m[i](self.ia[i](x[i]))), self.m_landmark[i](x[i])), axis=1
+                )
+
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+            x_det = x[i][..., :6]
+            x_landmark = x[i][..., 6 : 6 + 2 * self.nlandmark]
+            x_landmark_conf = x[i][..., 6 + 2 * self.nlandmark :]
+
+            if not self.training:  # inference
+                if self.grid[i].shape[2:4] != x[i].shape[2:4]:
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                landmark_grid_x = self.grid[i][..., 0:1]
+                landmark_grid_y = self.grid[i][..., 1:2]
+
+                if self.nlandmark == 0:
+                    y = x[i].sigmoid()
+                else:
+                    y = x_det.sigmoid()
+
+                if self.inplace:
+                    xy = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
+                    wh = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i].view(
+                        1, self.na, 1, 1, 2
+                    )  # wh
+                    if self.nlandmark != 0:
+                        x_landmark[..., 0::2] = (
+                            x_landmark[..., ::2] * 2.0
+                            - 0.5
+                            + landmark_grid_x.repeat(1, 1, 1, 1, self.nlandmark)
+                        ) * self.stride[
+                            i
+                        ]  # xy
+                        x_landmark[..., 1::2] = (
+                            x_landmark[..., 1::2] * 2.0
+                            - 0.5
+                            + landmark_grid_y.repeat(1, 1, 1, 1, self.nlandmark)
+                        ) * self.stride[
+                            i
+                        ]  # xy
+                        x_landmark_conf = x_landmark_conf.sigmoid()
+
+                    y = torch.cat((xy, wh, y[..., 4:], x_landmark, x_landmark_conf), dim=-1)
+                else:  # for YOLOv5 on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
+                    xy = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
+                    wh = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                    if self.nlandmark != 0:
+                        y[..., 6:] = (
+                            y[..., 6:] * 2.0
+                            - 0.5
+                            + self.grid[i].repeat((1, 1, 1, 1, self.nlandmark))
+                        ) * self.stride[
+                            i
+                        ]  # xy
+                    y = torch.cat((xy, wh, y[..., 4:]), -1)
+
+                z.append(y.view(bs, -1, self.no))
+
+        return x if self.training else (torch.cat(z, 1), x)
+
+    @staticmethod
+    def _make_grid(nx=20, ny=20):
+        yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
+        return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
+
+
 class IAuxDetect(nn.Module):
     stride = None  # strides computed during build
     export = False  # onnx export
@@ -661,6 +788,16 @@ class Model(nn.Module):
             self.stride = m.stride
             self._initialize_biases_kpt()  # only run once
             # print('Strides: %s' % m.stride.tolist())
+        if isinstance(m, ILandmark):
+            s = 256  # 2x min stride
+            m.stride = torch.tensor(
+                [s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))]
+            )  # forward
+            check_anchor_order(m)
+            m.anchors /= m.stride.view(-1, 1, 1)
+            self.stride = m.stride
+            self._initialize_biases_kpt()  # only run once
+            # print('Strides: %s' % m.stride.tolist())
 
         # Init weights, biases
         initialize_weights(self)
@@ -704,6 +841,7 @@ class Model(nn.Module):
                     or isinstance(m, IDetect)
                     or isinstance(m, IAuxDetect)
                     or isinstance(m, IKeypoint)
+                    or isinstance(m, ILandmark)
                 ):
                     break
 
@@ -856,12 +994,20 @@ class Model(nn.Module):
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     logger.info("\n%3s%18s%3s%10s  %-40s%-30s" % ("", "from", "n", "params", "module", "arguments"))
-    anchors, nc, gd, gw = d["anchors"], d["nc"], d["depth_multiple"], d["width_multiple"]
+    anchors, nc, nlandmark, gd, gw, dw_conv_landmark = (
+        d["anchors"],
+        d["nc"],
+        d["nlandmark"],
+        d["depth_multiple"],
+        d["width_multiple"],
+        d["dw_conv_landmark"],
+    )
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
+    no = na * (nc + 5 + 2 * nlandmark + 1)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
+        args_dict = {}
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
             try:
@@ -975,10 +1121,12 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f[0]]
         elif m is Foldcut:
             c2 = ch[f] // 2
-        elif m in [Detect, IDetect, IAuxDetect, IBin, IKeypoint]:
+        elif m in [Detect, IDetect, IAuxDetect, IBin, IKeypoint, ILandmark]:
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
+            if "dw_conv_landmark" in d.keys():
+                args_dict = {"dw_conv_landmark": d["dw_conv_landmark"]}
         elif m is ReOrg:
             c2 = ch[f] * 4
         elif m is Contract:
@@ -988,7 +1136,11 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        m_ = nn.Sequential(*[m(*args) for _ in range(n)]) if n > 1 else m(*args)  # module
+        m_ = (
+            nn.Sequential(*[m(*args, **args_dict) for _ in range(n)])
+            if n > 1
+            else m(*args, **args_dict)
+        )  # module
         t = str(m)[8:-2].replace("__main__.", "")  # module type
         np = sum([x.numel() for x in m_.parameters()])  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params

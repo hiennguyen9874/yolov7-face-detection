@@ -1,0 +1,10 @@
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+train: /home/coder/project/datasets/face_detections/widerface/train.txt
+val: /home/coder/project/datasets/face_detections/widerface/val.txt
+test: /home/coder/project/datasets/face_detections/widerface/val.txt
+
+# number of classes
+nc: 1
+
+# class names
+names: ["face"]

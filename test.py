@@ -121,7 +121,7 @@ def test(
     coco91class = coco80_to_coco91_class()
     s = ("%20s" + "%12s" * 6) % ("Class", "Images", "Labels", "P", "R", "mAP@.5", "mAP@.5:.95")
     p, r, f1, mp, mr, map50, map, t0, t1 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    loss = torch.zeros(3, device=device)
+    loss = torch.zeros(5, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
@@ -139,8 +139,11 @@ def test(
             # Compute loss
             if compute_loss:
                 loss += compute_loss([x.float() for x in train_out], targets)[1][
-                    :3
-                ]  # box, obj, cls
+                    :5
+                ]  # box, obj, cls, llmks, llmks_mask
+
+            out = out[..., :6]
+            targets = targets[..., :6]
 
             # Run NMS
             targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
@@ -149,7 +152,11 @@ def test(
             )  # for autolabelling
             t = time_synchronized()
             out = non_max_suppression(
-                out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True
+                out,
+                conf_thres=conf_thres,
+                iou_thres=iou_thres,
+                labels=lb,
+                multi_label=True,
             )
             t1 += time_synchronized() - t
 

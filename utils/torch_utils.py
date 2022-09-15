@@ -62,7 +62,7 @@ def git_describe(path=Path(__file__).parent):  # path must be a directory
 
 def select_device(device="", batch_size=None):
     # device = 'cpu' or '0' or '0,1,2,3'
-    s = f"YOLOR 🚀 {git_describe() or date_modified()} torch {torch.__version__} "  # string
+    s = f"YOLOV7-FACE 🚀 {git_describe() or date_modified()} torch {torch.__version__} "  # string
     cpu = device.lower() == "cpu"
     if cpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # force torch.cuda.is_available() = False
@@ -424,3 +424,30 @@ class TracedModel(nn.Module):
         out = self.model(x)
         out = self.detect_layer(out)
         return out
+
+
+def load_ckpt(model, ckpt):
+    model_state_dict = model.state_dict()
+
+    load_dict = {}
+
+    for key_model, v in model_state_dict.items():
+        if key_model not in ckpt:
+            print(
+                "{} is not in the ckpt. Please double check and see if this is desired.".format(
+                    key_model
+                )
+            )
+            continue
+
+        v_ckpt = ckpt[key_model]
+        if v.shape != v_ckpt.shape:
+            print(
+                "Shape of {} in checkpoint is {}, while shape of {} in model is {}.".format(
+                    key_model, v_ckpt.shape, key_model, v.shape
+                )
+            )
+            continue
+        load_dict[key_model] = v_ckpt
+    model.load_state_dict(load_dict, strict=False)
+    return model

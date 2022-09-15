@@ -25,6 +25,10 @@ from utils.metrics import fitness
 matplotlib.rc("font", **{"size": 11})
 matplotlib.use("Agg")  # for writing to files only
 
+LEFT_COLOR = (255, 0, 0)
+CENTER_COLOR = (0, 255, 0)
+RIGHT_COLOR = (0, 0, 255)
+
 
 def color_list():
     # Return first 10 plt colors as (r,g,b) https://stackoverflow.com/questions/51350872/python-from-color-name-to-rgb
@@ -56,7 +60,17 @@ def butter_lowpass_filtfilt(data, cutoff=1500, fs=50000, order=5):
     return filtfilt(b, a, data)  # forward-backward filter
 
 
-def plot_one_box(x, img, color=None, label=None, line_thickness=3):
+def plot_one_box(
+    x,
+    img,
+    color=None,
+    label=None,
+    lmks=None,
+    lmks_mask=None,
+    line_thickness=3,
+    lmks_normalized=True,
+    radius=2,
+):
     # Plots one bounding box on image img
     tl = (
         line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1
@@ -64,6 +78,7 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     color = color or [random.randint(0, 255) for _ in range(3)]
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
     cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+
     if label:
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
@@ -78,6 +93,53 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
             [225, 255, 255],
             thickness=tf,
             lineType=cv2.LINE_AA,
+        )
+
+    if lmks is not None and lmks_mask is not None and lmks_mask > 0:
+        img = cv2.circle(
+            img,
+            (int(lmks[0] * img.shape[1]), int(lmks[1] * img.shape[0]))
+            if lmks_normalized
+            else (int(lmks[0]), int(lmks[1])),
+            radius=radius,
+            color=LEFT_COLOR,
+            thickness=-1,
+        )
+        img = cv2.circle(
+            img,
+            (int(lmks[2] * img.shape[1]), int(lmks[3] * img.shape[0]))
+            if lmks_normalized
+            else (int(lmks[2]), int(lmks[3])),
+            radius=radius,
+            color=RIGHT_COLOR,
+            thickness=-1,
+        )
+        img = cv2.circle(
+            img,
+            (int(lmks[4] * img.shape[1]), int(lmks[5] * img.shape[0]))
+            if lmks_normalized
+            else (int(lmks[4]), int(lmks[5])),
+            radius=radius,
+            color=CENTER_COLOR,
+            thickness=-1,
+        )
+        img = cv2.circle(
+            img,
+            (int(lmks[6] * img.shape[1]), int(lmks[7] * img.shape[0]))
+            if lmks_normalized
+            else (int(lmks[6]), int(lmks[7])),
+            radius=radius,
+            color=LEFT_COLOR,
+            thickness=-1,
+        )
+        img = cv2.circle(
+            img,
+            (int(lmks[8] * img.shape[1]), int(lmks[9] * img.shape[0]))
+            if lmks_normalized
+            else (int(lmks[8]), int(lmks[9])),
+            radius=radius,
+            color=RIGHT_COLOR,
+            thickness=-1,
         )
 
 
@@ -127,7 +189,14 @@ def output_to_target(output):
 
 
 def plot_images(
-    images, targets, paths=None, fname="images.jpg", names=None, max_size=640, max_subplots=16
+    images,
+    targets,
+    paths=None,
+    fname="images.jpg",
+    names=None,
+    max_size=640,
+    max_subplots=16,
+    lmks_radius=4,
 ):
     # Plot image grid with labels
 
@@ -170,7 +239,7 @@ def plot_images(
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
             classes = image_targets[:, 1].astype("int")
-            labels = image_targets.shape[1] == 6  # labels if no conf column
+            labels = image_targets.shape[1] == 17  # labels if no conf column
             conf = (
                 None if labels else image_targets[:, 6]
             )  # check for confidence presence (label vs pred)
@@ -183,13 +252,29 @@ def plot_images(
                     boxes *= scale_factor
             boxes[[0, 2]] += block_x
             boxes[[1, 3]] += block_y
+
+            lmks = image_targets[:, 6:16]
+            lmks_mask = image_targets[:, 16:17]
+
+            lmks[:, 0::2] = lmks[:, 0::2] * w + block_x
+            lmks[:, 1::2] = lmks[:, 1::2] * h + block_y
+
             for j, box in enumerate(boxes.T):
                 cls = int(classes[j])
                 color = colors[cls % len(colors)]
                 cls = names[cls] if names else cls
                 if labels or conf[j] > 0.25:  # 0.25 conf thresh
-                    label = "%s" % cls if labels else "%s %.1f" % (cls, conf[j])
-                    plot_one_box(box, mosaic, label=label, color=color, line_thickness=tl)
+                    plot_one_box(
+                        box,
+                        mosaic,
+                        label=None,
+                        color=color,
+                        line_thickness=tl,
+                        lmks=lmks[j],
+                        lmks_mask=lmks_mask[j],
+                        lmks_normalized=False,
+                        radius=lmks_radius,
+                    )
 
         # Draw image filename labels
         if paths:
