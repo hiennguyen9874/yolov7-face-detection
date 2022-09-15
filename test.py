@@ -12,23 +12,23 @@ from tqdm import tqdm
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
 from utils.general import (
-    coco80_to_coco91_class,
+    box_iou,
     check_dataset,
     check_file,
     check_img_size,
     check_requirements,
-    box_iou,
+    coco80_to_coco91_class,
+    colorstr,
+    increment_path,
     non_max_suppression,
     scale_coords,
-    xyxy2xywh,
-    xywh2xyxy,
     set_logging,
-    increment_path,
-    colorstr,
+    xywh2xyxy,
+    xyxy2xywh,
 )
-from utils.metrics import ap_per_class, ConfusionMatrix
-from utils.plots import plot_images, output_to_target, plot_study_txt
-from utils.torch_utils import select_device, time_synchronized, TracedModel
+from utils.metrics import ConfusionMatrix, ap_per_class
+from utils.plots import output_to_target, plot_images, plot_study_txt
+from utils.torch_utils import TracedModel, select_device, time_synchronized
 
 
 def test(

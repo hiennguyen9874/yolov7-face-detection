@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import random
+import test  # import test.py to get mAP after each epoch
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -21,39 +22,38 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-import test  # import test.py to get mAP after each epoch
 from models.experimental import attempt_load
 from models.yolo import Model
 from utils.autoanchor import check_anchors
 from utils.datasets import create_dataloader
 from utils.general import (
-    labels_to_class_weights,
-    increment_path,
-    labels_to_image_weights,
-    init_seeds,
-    fitness,
-    strip_optimizer,
-    get_latest_run,
     check_dataset,
     check_file,
     check_git_status,
     check_img_size,
     check_requirements,
+    colorstr,
+    fitness,
+    get_latest_run,
+    increment_path,
+    init_seeds,
+    labels_to_class_weights,
+    labels_to_image_weights,
+    one_cycle,
     print_mutation,
     set_logging,
-    one_cycle,
-    colorstr,
+    strip_optimizer,
 )
 from utils.google_utils import attempt_download
 from utils.loss import ComputeLoss, ComputeLossOTA
-from utils.plots import plot_images, plot_labels, plot_results, plot_evolution
+from utils.plots import plot_evolution, plot_images, plot_labels, plot_results
 from utils.torch_utils import (
     ModelEMA,
-    select_device,
     intersect_dicts,
-    torch_distributed_zero_first,
     is_parallel,
     load_ckpt,
+    select_device,
+    torch_distributed_zero_first,
 )
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 
@@ -907,7 +907,6 @@ if __name__ == "__main__":
             "scale": (1, 0.0, 0.9),  # image scale (+/- gain)
             "shear": (1, 0.0, 10.0),  # image shear (+/- deg)
             "perspective": (0, 0.0, 0.001),  # image perspective (+/- fraction), range 0-0.001
-            "flipud": (1, 0.0, 1.0),  # image flip up-down (probability)
             "fliplr": (0, 0.0, 1.0),  # image flip left-right (probability)
             "mosaic": (1, 0.0, 1.0),  # image mixup (probability)
             "mixup": (1, 0.0, 1.0),  # image mixup (probability)

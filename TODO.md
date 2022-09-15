@@ -1,2 +1,6 @@
 - val/llmks_loss = 0?
+- mosaic
+- mixup
+- lmks
+- lmks_mask
 - ComputeLossOTA

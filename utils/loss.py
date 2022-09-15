@@ -1,10 +1,12 @@
 # Loss functions
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.general import bbox_iou, bbox_alpha_iou, box_iou, box_giou, box_diou, box_ciou, xywh2xyxy
+from utils.general import (bbox_alpha_iou, bbox_iou, box_ciou, box_diou,
+                           box_giou, box_iou, xywh2xyxy)
 from utils.torch_utils import is_parallel
 
 
