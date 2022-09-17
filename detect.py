@@ -8,21 +8,23 @@ import torch.backends.cudnn as cudnn
 from numpy import random
 
 from models.experimental import attempt_load
-from utils.datasets import LoadStreams, LoadImages
+from utils.datasets import LoadImages, LoadStreams
 from utils.general import (
-    check_img_size,
-    check_requirements,
-    check_imshow,
-    non_max_suppression,
     apply_classifier,
-    scale_coords,
-    xyxy2xywh,
-    strip_optimizer,
-    set_logging,
+    check_img_size,
+    check_imshow,
+    check_requirements,
     increment_path,
+    non_max_suppression,
+    non_max_suppression_lmks,
+    scale_coords,
+    scale_coords_lmks,
+    set_logging,
+    strip_optimizer,
+    xyxy2xywh,
 )
 from utils.plots import plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
+from utils.torch_utils import TracedModel, load_classifier, select_device, time_synchronized
 
 
 def detect(save_img=False):
@@ -62,14 +64,6 @@ def detect(save_img=False):
 
     if half:
         model.half()  # to FP16
-
-    # Second-stage classifier
-    classify = False
-    if classify:
-        modelc = load_classifier(name="resnet101", n=2)  # initialize
-        modelc.load_state_dict(torch.load("weights/resnet101.pt", map_location=device)["model"]).to(
-            device
-        ).eval()
 
     # Set Dataloader
     vid_path, vid_writer = None, None
@@ -116,14 +110,10 @@ def detect(save_img=False):
         t2 = time_synchronized()
 
         # Apply NMS
-        pred = non_max_suppression(
+        pred = non_max_suppression_lmks(
             pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms
         )
         t3 = time_synchronized()
-
-        # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
@@ -141,14 +131,22 @@ def detect(save_img=False):
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+                det[:, 6:16] = scale_coords_lmks(img.shape[2:], det[:, 6:16], im0.shape).round()
+                det[:, 16:17] = 1
 
                 # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
+                for c in det[:, 5].unique():
+                    n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
-                for *xyxy, conf, cls in reversed(det):
+                for det_per_box in reversed(det):
+                    xyxy, conf, cls, lmks = (
+                        det_per_box[0:4],
+                        det_per_box[4],
+                        det_per_box[5],
+                        det_per_box[6:16],
+                    )
                     if save_txt:  # Write to file
                         xywh = (
                             (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
@@ -160,7 +158,15 @@ def detect(save_img=False):
                     if save_img or view_img:  # Add bbox to image
                         label = f"{names[int(cls)]} {conf:.2f}"
                         plot_one_box(
-                            xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1
+                            xyxy,
+                            im0,
+                            label=label,
+                            color=colors[int(cls)],
+                            line_thickness=1,
+                            lmks=lmks,
+                            lmks_mask=1,
+                            lmks_normalized=False,
+                            radius=4,
                         )
 
             # Print time (inference + NMS)

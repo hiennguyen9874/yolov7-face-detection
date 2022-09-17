@@ -7,13 +7,12 @@ import yaml
 from tqdm import tqdm
 
 sys.path.append(str(Path(__file__).parent.parent.parent))  # add utils/ to path
-from utils.datasets import LoadImagesAndLabels
-from utils.datasets import img2label_paths
-from utils.general import colorstr, xywh2xyxy, check_dataset
+from utils.datasets import LoadImagesAndLabels, img2label_paths
+from utils.general import check_dataset, colorstr, xywh2xyxy
 
 try:
     import wandb
-    from wandb import init, finish
+    from wandb import finish, init
 except ImportError:
     wandb = None
 
@@ -93,17 +92,22 @@ class WandbLogger:
                 model_artifact_name = WANDB_ARTIFACT_PREFIX + model_artifact_name
                 assert wandb, "install wandb to resume wandb runs"
                 # Resume wandb-artifact:// runs here| workaround for not overwriting wandb.config
-                self.wandb_run = wandb.init(id=run_id, project=project, resume="allow")
+                self.wandb_run = wandb.init(
+                    id=run_id, project=project, resume="allow", tags=["Landmark"]
+                )
                 opt.resume = model_artifact_name
         elif self.wandb:
             self.wandb_run = (
                 wandb.init(
                     config=opt,
                     resume="allow",
-                    project="YOLOV7-FACE" if opt.project == "runs/train" else Path(opt.project).stem,
+                    project="YOLOV7-FACE"
+                    if opt.project == "runs/train"
+                    else Path(opt.project).stem,
                     name=name,
                     job_type=job_type,
                     id=run_id,
+                    tags=["Landmark"],
                 )
                 if not wandb.run
                 else wandb.run

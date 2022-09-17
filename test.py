@@ -11,21 +11,10 @@ from tqdm import tqdm
 
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
-from utils.general import (
-    box_iou,
-    check_dataset,
-    check_file,
-    check_img_size,
-    check_requirements,
-    coco80_to_coco91_class,
-    colorstr,
-    increment_path,
-    non_max_suppression,
-    scale_coords,
-    set_logging,
-    xywh2xyxy,
-    xyxy2xywh,
-)
+from utils.general import (box_iou, check_dataset, check_file, check_img_size,
+                           check_requirements, coco80_to_coco91_class,
+                           colorstr, increment_path, non_max_suppression,
+                           scale_coords, set_logging, xywh2xyxy, xyxy2xywh)
 from utils.metrics import ConfusionMatrix, ap_per_class
 from utils.plots import output_to_target, plot_images, plot_study_txt
 from utils.torch_utils import TracedModel, select_device, time_synchronized
@@ -121,7 +110,7 @@ def test(
     coco91class = coco80_to_coco91_class()
     s = ("%20s" + "%12s" * 6) % ("Class", "Images", "Labels", "P", "R", "mAP@.5", "mAP@.5:.95")
     p, r, f1, mp, mr, map50, map, t0, t1 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    loss = torch.zeros(5, device=device)
+    loss = torch.zeros(4, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)

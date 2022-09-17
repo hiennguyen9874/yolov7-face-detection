@@ -2,5 +2,6 @@
 - mosaic
 - mixup
 - lmks
-- lmks_mask
 - ComputeLossOTA
+- batch-size 16
+- landmark conf for each point

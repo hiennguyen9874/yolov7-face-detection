@@ -1,0 +1,10 @@
+| Name          | Dataset           | Epoch | lmks  | loss_ota | lrf  | shear | mixup | mosaic | batchsize | Easy   | Medium | Hard   |
+| ------------- | ----------------- | ----- | ----- | -------- | ---- | ----- | ----- | ------ | --------- | ------ | ------ | ------ |
+| yolov7-tiny14 | Winderface        | 80    | 0.005 | 0        | 0.01 | 0.0   | 0     | 0.5    | 32        | 0.9336 | 0.9146 | 0.7996 |
+| yolov7-tiny15 | Winderface        | 80    | 0.005 | 1        | 0.01 | 0.0   | 0     | 0.5    | 32        | 0.9320 | 0.9098 | 0.8016 |
+| yolov7-tiny16 | Winderface        | 80    | 0.005 | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 32        | 0.9364 | 0.9151 | 0.8055 |
+| yolov7-tiny17 | Winderface        | 80    | 0.01  | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 32        | 0.9362 | 0.9151 | 0.8065 |
+| yolov7-tiny18 | Winderface        | 80    | 0.005 | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.9384 | 0.9172 | 0.8073 |
+| yolov7-tiny19 | Winderface + MTFL | 80    | 0.01  | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.1371 | 0.0742 | 0.0309 |
+| yolov7-tiny20 | Winderface        | 80    | 0.01  | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | Text   | Text   | Text   |
+| yolov7-tiny21 | Winderface        | 80    | 0.005 | 0        | 0.2  | 0.5   | 0     | 0.5    | 15        | Text   | Text   | Text   |
