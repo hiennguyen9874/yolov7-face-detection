@@ -95,52 +95,57 @@ def plot_one_box(
             lineType=cv2.LINE_AA,
         )
 
-    if lmks is not None and lmks_mask is not None and lmks_mask > 0:
-        img = cv2.circle(
-            img,
-            (int(lmks[0] * img.shape[1]), int(lmks[1] * img.shape[0]))
-            if lmks_normalized
-            else (int(lmks[0]), int(lmks[1])),
-            radius=radius,
-            color=LEFT_COLOR,
-            thickness=-1,
-        )
-        img = cv2.circle(
-            img,
-            (int(lmks[2] * img.shape[1]), int(lmks[3] * img.shape[0]))
-            if lmks_normalized
-            else (int(lmks[2]), int(lmks[3])),
-            radius=radius,
-            color=RIGHT_COLOR,
-            thickness=-1,
-        )
-        img = cv2.circle(
-            img,
-            (int(lmks[4] * img.shape[1]), int(lmks[5] * img.shape[0]))
-            if lmks_normalized
-            else (int(lmks[4]), int(lmks[5])),
-            radius=radius,
-            color=CENTER_COLOR,
-            thickness=-1,
-        )
-        img = cv2.circle(
-            img,
-            (int(lmks[6] * img.shape[1]), int(lmks[7] * img.shape[0]))
-            if lmks_normalized
-            else (int(lmks[6]), int(lmks[7])),
-            radius=radius,
-            color=LEFT_COLOR,
-            thickness=-1,
-        )
-        img = cv2.circle(
-            img,
-            (int(lmks[8] * img.shape[1]), int(lmks[9] * img.shape[0]))
-            if lmks_normalized
-            else (int(lmks[8]), int(lmks[9])),
-            radius=radius,
-            color=RIGHT_COLOR,
-            thickness=-1,
-        )
+    if lmks is not None and lmks_mask is not None:
+        if lmks_mask[0] > 0:
+            img = cv2.circle(
+                img,
+                (int(lmks[0] * img.shape[1]), int(lmks[1] * img.shape[0]))
+                if lmks_normalized
+                else (int(lmks[0]), int(lmks[1])),
+                radius=radius,
+                color=LEFT_COLOR,
+                thickness=-1,
+            )
+        if lmks_mask[1] > 0:
+            img = cv2.circle(
+                img,
+                (int(lmks[2] * img.shape[1]), int(lmks[3] * img.shape[0]))
+                if lmks_normalized
+                else (int(lmks[2]), int(lmks[3])),
+                radius=radius,
+                color=RIGHT_COLOR,
+                thickness=-1,
+            )
+        if lmks_mask[2] > 0:
+            img = cv2.circle(
+                img,
+                (int(lmks[4] * img.shape[1]), int(lmks[5] * img.shape[0]))
+                if lmks_normalized
+                else (int(lmks[4]), int(lmks[5])),
+                radius=radius,
+                color=CENTER_COLOR,
+                thickness=-1,
+            )
+        if lmks_mask[3] > 0:
+            img = cv2.circle(
+                img,
+                (int(lmks[6] * img.shape[1]), int(lmks[7] * img.shape[0]))
+                if lmks_normalized
+                else (int(lmks[6]), int(lmks[7])),
+                radius=radius,
+                color=LEFT_COLOR,
+                thickness=-1,
+            )
+        if lmks_mask[4] > 0:
+            img = cv2.circle(
+                img,
+                (int(lmks[8] * img.shape[1]), int(lmks[9] * img.shape[0]))
+                if lmks_normalized
+                else (int(lmks[8]), int(lmks[9])),
+                radius=radius,
+                color=RIGHT_COLOR,
+                thickness=-1,
+            )
 
 
 def plot_one_box_PIL(box, img, color=None, label=None, line_thickness=None):
@@ -239,7 +244,7 @@ def plot_images(
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
             classes = image_targets[:, 1].astype("int")
-            labels = image_targets.shape[1] == 17  # labels if no conf column
+            labels = image_targets.shape[1] == 21  # labels if no conf column
             conf = (
                 None if labels else image_targets[:, 6]
             )  # check for confidence presence (label vs pred)
@@ -254,7 +259,7 @@ def plot_images(
             boxes[[1, 3]] += block_y
 
             lmks = image_targets[:, 6:16]
-            lmks_mask = image_targets[:, 16:17]
+            lmks_mask = image_targets[:, 16:21]
 
             lmks[:, 0::2] = lmks[:, 0::2] * w + block_x
             lmks[:, 1::2] = lmks[:, 1::2] * h + block_y

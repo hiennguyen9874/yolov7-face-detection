@@ -164,7 +164,7 @@ def detect(save_img=False):
                             color=colors[int(cls)],
                             line_thickness=1,
                             lmks=lmks,
-                            lmks_mask=1,
+                            lmks_mask=[1] * (len(lmks) // 2),
                             lmks_normalized=False,
                             radius=4,
                         )

@@ -581,7 +581,7 @@ class ComputeLoss:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         tcls, tbox, tlmks, tlmks_mask, indices, anch = [], [], [], [], [], []
-        gain = torch.ones(18, device=targets.device).long()  # normalized to gridspace gain
+        gain = torch.ones(22, device=targets.device).long()  # normalized to gridspace gain
         ai = (
             torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)
         )  # same as .repeat_interleave(nt)
@@ -637,7 +637,7 @@ class ComputeLoss:
             gi, gj = gij.T  # grid xy indices
 
             # Append
-            a = t[:, 17].long()  # anchor indices
+            a = t[:, 21].long()  # anchor indices
             indices.append(
                 (b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1))
             )  # image, anchor, grid indices
@@ -654,7 +654,7 @@ class ComputeLoss:
             tlmks.append(lmks)
 
             lmks_mask = torch.where(
-                (lmks > 0).all(dim=1, keepdim=True) & (t[:, 16:17] > 0),
+                (lmks > 0) & (t[:, 16:21].repeat_interleave(repeats=2, dim=1) > 0),
                 torch.full_like(lmks, 1.0),
                 torch.full_like(lmks, 0.0),
             )
@@ -760,7 +760,8 @@ class ComputeLossOTA:
 
                 # Landmark mask
                 selected_tlmks_mask = torch.where(
-                    (selected_tlmks > 0).all(dim=1, keepdim=True) & (targets[i][:, 16:17] > 0),
+                    (selected_tlmks > 0)
+                    & (targets[i][:, 16:21].repeat_interleave(repeats=2, dim=1) > 0),
                     torch.full_like(selected_tlmks, 1.0),
                     torch.full_like(selected_tlmks, 0.0),
                 )

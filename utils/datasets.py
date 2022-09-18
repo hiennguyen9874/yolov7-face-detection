@@ -450,7 +450,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix(
             ".cache"
         )  # cached labels
-        if cache_path.is_file():
+        if cache_path.is_file() and False:
             cache, exists = torch.load(cache_path), True  # load
             # if cache['hash'] != get_hash(self.label_files + self.img_files) or 'version' not in cache:  # changed
             #    cache, exists = self.cache_labels(cache_path, prefix), False  # re-cache
@@ -542,6 +542,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         pbar = tqdm(
             zip(self.img_files, self.label_files), desc="Scanning images", total=len(self.img_files)
         )
+
         for i, (im_file, lb_file) in enumerate(pbar):
             try:
                 # verify images
@@ -560,15 +561,15 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         for line_label in f.read().strip().splitlines():
                             line_label = line_label.split()
                             if len(line_label) == 5:
-                                line_label = line_label + [0] * 10 + [-1]
+                                line_label = line_label + [0] * 10 + [-1] * 5
                             elif len(line_label) < 16:
-                                line_label = line_label[:5] + [0] * 10 + [-1]
-                            elif len(line_label) > 16:
-                                line_label = line_label[:16]
+                                line_label = line_label[:5] + [0] * 10 + [-1] * 5
+                            elif len(line_label) >= 16:
+                                line_label = line_label[:15] + [line_label[15]] * 5
                             l.append(line_label)
                         l = np.array(l, dtype=np.float32)
                     if len(l):
-                        assert l.shape[1] == 16, "labels require 16 columns each"
+                        assert l.shape[1] == 20, "labels require 20 columns each"
                         assert (l[..., :5] >= 0).all(), "negative labels"
                         assert (
                             l[..., 1:5] <= 1
@@ -578,10 +579,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         ), "duplicate labels"
                     else:
                         ne += 1  # label empty
-                        l = np.zeros((0, 16), dtype=np.float32)
+                        l = np.zeros((0, 20), dtype=np.float32)
                 else:
                     nm += 1  # label missing
-                    l = np.zeros((0, 16), dtype=np.float32)
+                    l = np.zeros((0, 20), dtype=np.float32)
                 x[im_file] = [l, shape]
             except Exception as e:
                 nc += 1
@@ -620,7 +621,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         if mosaic:
             # Load mosaic
-            if random.random() < 0.8:
+            # if random.random() < 0.8:
+            if True:
                 img, labels = load_mosaic(self, index)
             else:
                 img, labels = load_mosaic9(self, index)
@@ -701,7 +703,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         :, [7, 8, 5, 6, 9, 10, 13, 14, 11, 12]
                     ]
 
-        labels_out = torch.zeros((nL, 17))
+                    labels[:, [15, 16, 17, 18, 19]] = labels[:, [16, 15, 17, 19, 18]]
+
+        labels_out = torch.zeros((nL, 21))
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
@@ -831,11 +835,14 @@ def load_mosaic(self, index):
         np.clip(labels4[:, 1:], 0, 2 * s, out=labels4[:, 1:])  # use with random_perspective
         # img4, labels4 = replicate(img4, labels4)  # replicate
 
-        is_out_landmarks = (labels4[:, 5:15] < 0).any(axis=1, keepdims=True) | (
-            labels4[:, 5:15] > 2 * s
-        ).any(axis=1, keepdims=True)
+        is_out_landmarks = (
+            (labels4[:, 5:15:2] < 0)
+            | (labels4[:, 6:15:2] < 0)
+            | (labels4[:, 5:15:2] > 2 * s)
+            | (labels4[:, 6:15:2] > 2 * s)
+        )
 
-        labels4[:, 15:16] = labels4[:, 15:16] * (~is_out_landmarks) + -1 * is_out_landmarks
+        labels4[:, 15:20] = labels4[:, 15:20] * (~is_out_landmarks) + -1 * is_out_landmarks
 
     # Augment
     img4, labels4 = random_perspective(
@@ -923,11 +930,14 @@ def load_mosaic9(self, index):
         np.clip(labels9[:, 1:], 0, 2 * s, out=labels9[:, 1:])  # use with random_perspective
         # img9, labels9 = replicate(img9, labels9)  # replicate
 
-        is_out_landmarks = (labels9[:, 5:15] < 0).any(axis=1, keepdims=True) | (
-            labels9[:, 5:15] > 2 * s
-        ).any(axis=1, keepdims=True)
+        is_out_landmarks = (
+            (labels9[:, 5:15:2] < 0)
+            | (labels9[:, 6:15:2] < 0)
+            | (labels9[:, 5:15:2] > 2 * s)
+            | (labels9[:, 6:15:2] > 2 * s)
+        )
 
-        labels9[:, 15:16] = labels9[:, 15:16] * (~is_out_landmarks) + -1 * is_out_landmarks
+        labels9[:, 15:20] = labels9[:, 15:20] * (~is_out_landmarks) + -1 * is_out_landmarks
 
     # Augment
     img9, labels9 = random_perspective(
@@ -1088,32 +1098,32 @@ def random_perspective(
 
         if targets.shape[1] > 5:
             landmarks = targets[..., 5:15]
-            landmarks_mask = targets[..., 15:16]
+            landmarks_mask = targets[..., 15:20]
+            batch_size = landmarks_mask.shape[0]
 
-            temp_landmarks = np.ones((landmarks_mask.shape[0] * landmarks.shape[1] // 2, 3))
+            temp_landmarks = np.ones((batch_size * landmarks.shape[1] // 2, 3))
             temp_landmarks[:, :2] = landmarks.reshape(-1, 2)
             temp_landmarks = temp_landmarks @ M.T
 
             if perspective:
                 temp_landmarks = (temp_landmarks[:, :2] / temp_landmarks[:, 2:3]).reshape(
-                    landmarks_mask.shape[0], landmarks.shape[1]
+                    batch_size, landmarks.shape[1]
                 )
             else:
-                temp_landmarks = temp_landmarks[:, :2].reshape(
-                    landmarks_mask.shape[0], landmarks.shape[1]
-                )
+                temp_landmarks = temp_landmarks[:, :2].reshape(batch_size, landmarks.shape[1])
             landmarks = temp_landmarks
 
             is_out_landmarks = (
-                (landmarks < 0).any(axis=1, keepdims=True)
-                | (landmarks[..., 0::2] > img.shape[1]).any(axis=1, keepdims=True)
-                | (landmarks[..., 1::2] > img.shape[0]).any(axis=1, keepdims=True)
+                (landmarks[:, 0::2] < 0)
+                | (landmarks[:, 1::2] < 0)
+                | (landmarks[:, 0::2] > img.shape[1])
+                | (landmarks[:, 1::2] > img.shape[0])
             )
 
             landmarks_mask = landmarks_mask * (~is_out_landmarks) + -1 * is_out_landmarks
 
             targets[..., 5:15] = landmarks
-            targets[..., 15:16] = landmarks_mask
+            targets[..., 15:20] = landmarks_mask
 
     return img, targets
 
