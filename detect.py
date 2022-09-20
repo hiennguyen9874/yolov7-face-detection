@@ -132,7 +132,6 @@ def detect(save_img=False):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
                 det[:, 6:16] = scale_coords_lmks(img.shape[2:], det[:, 6:16], im0.shape).round()
-                det[:, 16:17] = 1
 
                 # Print results
                 for c in det[:, 5].unique():

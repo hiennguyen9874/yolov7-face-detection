@@ -5,8 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.general import (bbox_alpha_iou, bbox_iou, box_ciou, box_diou,
-                           box_giou, box_iou, xywh2xyxy)
+from utils.general import bbox_alpha_iou, bbox_iou, box_ciou, box_diou, box_giou, box_iou, xywh2xyxy
 from utils.torch_utils import is_parallel
 
 
@@ -654,7 +653,7 @@ class ComputeLoss:
             tlmks.append(lmks)
 
             lmks_mask = torch.where(
-                (lmks > 0) & (t[:, 16:21].repeat_interleave(repeats=2, dim=1) > 0),
+                t[:, 16:21].repeat_interleave(repeats=2, dim=1) > 0,
                 torch.full_like(lmks, 1.0),
                 torch.full_like(lmks, 0.0),
             )
@@ -760,8 +759,7 @@ class ComputeLossOTA:
 
                 # Landmark mask
                 selected_tlmks_mask = torch.where(
-                    (selected_tlmks > 0)
-                    & (targets[i][:, 16:21].repeat_interleave(repeats=2, dim=1) > 0),
+                    targets[i][:, 16:21].repeat_interleave(repeats=2, dim=1) > 0,
                     torch.full_like(selected_tlmks, 1.0),
                     torch.full_like(selected_tlmks, 0.0),
                 )

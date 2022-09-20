@@ -11,10 +11,22 @@ from tqdm import tqdm
 
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
-from utils.general import (box_iou, check_dataset, check_file, check_img_size,
-                           check_requirements, coco80_to_coco91_class,
-                           colorstr, increment_path, non_max_suppression,
-                           scale_coords, set_logging, xywh2xyxy, xyxy2xywh)
+from utils.general import (
+    box_iou,
+    check_dataset,
+    check_file,
+    check_img_size,
+    check_requirements,
+    coco80_to_coco91_class,
+    colorstr,
+    increment_path,
+    non_max_suppression,
+    non_max_suppression_lmks,
+    scale_coords,
+    set_logging,
+    xywh2xyxy,
+    xyxy2xywh,
+)
 from utils.metrics import ConfusionMatrix, ap_per_class
 from utils.plots import output_to_target, plot_images, plot_study_txt
 from utils.torch_utils import TracedModel, select_device, time_synchronized
@@ -131,16 +143,17 @@ def test(
                     :4
                 ]  # box, obj, cls, llmks
 
-            out = out[..., :6]
-            targets = targets[..., :6]
+            # out = out[..., :6]
+            # targets = targets[..., :6]
 
             # Run NMS
-            targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
+            targets[:, 2:6] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
+            targets[:, 6:16] *= torch.Tensor([width, height] * 5).to(device)  # to pixels
             lb = (
-                [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []
+                [targets[targets[:, 0] == i, 1:6] for i in range(nb)] if save_hybrid else []
             )  # for autolabelling
             t = time_synchronized()
-            out = non_max_suppression(
+            out = non_max_suppression_lmks(
                 out,
                 conf_thres=conf_thres,
                 iou_thres=iou_thres,
@@ -151,7 +164,9 @@ def test(
 
         # Statistics per image
         for si, pred in enumerate(out):
-            labels = targets[targets[:, 0] == si, 1:]
+            pred = pred[:, :6]
+
+            labels = targets[targets[:, 0] == si, 1:6]
             nl = len(labels)
             tcls = labels[:, 0].tolist() if nl else []  # target class
             path = Path(paths[si])

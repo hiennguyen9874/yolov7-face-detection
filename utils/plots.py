@@ -188,8 +188,14 @@ def output_to_target(output):
     # Convert model output to target format [batch_id, class_id, x, y, w, h, conf]
     targets = []
     for i, o in enumerate(output):
-        for *box, conf, cls in o.cpu().numpy():
-            targets.append([i, cls, *list(*xyxy2xywh(np.array(box)[None])), conf])
+        for out_per_box in o.cpu().numpy():
+            box = out_per_box[:4]
+            conf = out_per_box[4]
+            cls = out_per_box[5]
+            lmks = out_per_box[6:16]
+            targets.append(
+                [i, cls, *list(*xyxy2xywh(np.array(box)[None])), conf, *lmks, *([1] * 5)]
+            )
     return np.array(targets)
 
 
@@ -245,9 +251,16 @@ def plot_images(
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
             classes = image_targets[:, 1].astype("int")
             labels = image_targets.shape[1] == 21  # labels if no conf column
-            conf = (
-                None if labels else image_targets[:, 6]
-            )  # check for confidence presence (label vs pred)
+
+            if labels:
+                # check for confidence presence (label vs pred)
+                conf = None
+                lmks = image_targets[:, 6:16]
+                lmks_mask = image_targets[:, 16:21]
+            else:
+                conf = image_targets[:, 6]
+                lmks = image_targets[:, 7:17]
+                lmks_mask = image_targets[:, 17:22]
 
             if boxes.shape[1]:
                 if boxes.max() <= 1.01:  # if normalized with tolerance 0.01
@@ -258,11 +271,14 @@ def plot_images(
             boxes[[0, 2]] += block_x
             boxes[[1, 3]] += block_y
 
-            lmks = image_targets[:, 6:16]
-            lmks_mask = image_targets[:, 16:21]
+            if lmks.max() <= 1.01:
+                lmks[:, 0::2] *= w
+                lmks[:, 1::2] *= h
+            elif scale_factor < 1:
+                lmks *= scale_factor
 
-            lmks[:, 0::2] = lmks[:, 0::2] * w + block_x
-            lmks[:, 1::2] = lmks[:, 1::2] * h + block_y
+            lmks[:, 0::2] += block_x
+            lmks[:, 1::2] += block_y
 
             for j, box in enumerate(boxes.T):
                 cls = int(classes[j])

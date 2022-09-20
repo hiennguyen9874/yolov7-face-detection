@@ -1,3 +1,5 @@
+# One mask for all point
+
 | Name          | Dataset           | Epoch | lmks  | loss_ota | lrf  | shear | mixup | mosaic | batchsize | Easy   | Medium | Hard   |
 | ------------- | ----------------- | ----- | ----- | -------- | ---- | ----- | ----- | ------ | --------- | ------ | ------ | ------ |
 | yolov7-tiny14 | Winderface        | 80    | 0.005 | 0        | 0.01 | 0.0   | 0     | 0.5    | 32        | 0.9336 | 0.9146 | 0.7996 |
@@ -7,4 +9,20 @@
 | yolov7-tiny18 | Winderface        | 80    | 0.005 | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.9384 | 0.9172 | 0.8073 |
 | yolov7-tiny19 | Winderface + MTFL | 80    | 0.01  | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.1371 | 0.0742 | 0.0309 |
 | yolov7-tiny20 | Winderface        | 80    | 0.01  | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.9371 | 0.9170 | 0.8094 |
-| yolov7-tiny21 | Winderface        | 80    | 0.005 | 0        | 0.2  | 0.5   | 0     | 0.5    | 15        | 0.9391 | 0.9175 | 0.8003 |
+| yolov7-tiny21 | Winderface        | 80    | 0.005 | 0        | 0.2  | 0.5   | 0     | 0.5    | 16        | 0.9391 | 0.9175 | 0.8003 |
+
+# One mask for one point
+
+| Name          | Dataset    | Epoch | lmks  | loss_ota | lrf | shear | mixup | mosaic | batchsize | Easy   | Medium | Hard   |
+| ------------- | ---------- | ----- | ----- | -------- | --- | ----- | ----- | ------ | --------- | ------ | ------ | ------ |
+| yolov7-tiny22 | Winderface | 80    | 0.005 | 0        | 0.2 | 0.5   | 0     | 0.5    | 16        | 0.9407 | 0.9191 | 0.7985 |
+| yolov7-tiny23 | Winderface | 80    | 0.01  | 0        | 0.2 | 0.5   | 0     | 0.5    | 16        | 0.9401 | 0.9182 | 0.8006 |
+| yolov7-tiny24 | Winderface | 80    | 0.01  | 1        | 0.2 | 0.5   | 0     | 0.5    | 16        | 0.9378 | 0.9165 | 0.8028 |
+| yolov7-tiny25 | Winderface | 80    | 0.05  | 1        | 0.2 | 0.5   | 0     | 0.5    | 16        | 0.9222 | 0.8990 | 0.7768 |
+
+# One mask for one point + dw_conv_landmark = false
+
+| Name          | Dataset    | Epoch | lmks  | loss_ota | lrf | shear | mixup | mosaic | batchsize | Easy   | Medium | Hard   |
+| ------------- | ---------- | ----- | ----- | -------- | --- | ----- | ----- | ------ | --------- | ------ | ------ | ------ |
+| yolov7-tiny27 | Winderface | 80    | 0.005 | 0        | 0.2 | 0.5   | 0     | 0.5    | 16        | 0.9375 | 0.9175 | 0.7992 |
+| yolov7-tiny27 | Winderface | 80    | 0.01  | 1        | 0.2 | 0.5   | 0.05  | 1.0    | 16        | Text   | Text   | Text   |

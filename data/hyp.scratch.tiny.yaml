@@ -25,6 +25,6 @@ scale: 0.5 # image scale (+/- gain)
 shear: 0.5 # image shear (+/- deg)
 perspective: 0.0 # image perspective (+/- fraction), range 0-0.001
 fliplr: 0.5 # image flip left-right (probability)
-mosaic: 0.5 # image mosaic (probability)
-mixup: 0.0 # image mixup (probability)
-loss_ota: 0 # use ComputeLossOTA, use 0 for faster training
+mosaic: 1.0 # image mosaic (probability)
+mixup: 0.05 # image mixup (probability)
+loss_ota: 1 # use ComputeLossOTA, use 0 for faster training

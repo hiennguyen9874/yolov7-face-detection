@@ -3,7 +3,7 @@ nc: 1 # number of classes
 nlandmark: 5 # number of keypoints
 depth_multiple: 1.0 # model depth multiple
 width_multiple: 1.0 # layer channel multiple
-dw_conv_landmark: True
+dw_conv_landmark: False
 
 # anchors
 anchors:
