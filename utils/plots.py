@@ -271,12 +271,12 @@ def plot_images(
             boxes[[0, 2]] += block_x
             boxes[[1, 3]] += block_y
 
-            if lmks.max() <= 1.01:
-                lmks[:, 0::2] *= w
-                lmks[:, 1::2] *= h
-            elif scale_factor < 1:
-                lmks *= scale_factor
-
+            if lmks.shape[0]:
+                if lmks.max() <= 1.01:
+                    lmks[:, 0::2] *= w
+                    lmks[:, 1::2] *= h
+                elif scale_factor < 1:
+                    lmks *= scale_factor
             lmks[:, 0::2] += block_x
             lmks[:, 1::2] += block_y
 

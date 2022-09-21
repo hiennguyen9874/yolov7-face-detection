@@ -22,7 +22,12 @@
 
 # One mask for one point + dw_conv_landmark = false
 
-| Name          | Dataset    | Epoch | lmks  | loss_ota | lrf | shear | mixup | mosaic | batchsize | Easy   | Medium | Hard   |
-| ------------- | ---------- | ----- | ----- | -------- | --- | ----- | ----- | ------ | --------- | ------ | ------ | ------ |
-| yolov7-tiny27 | Winderface | 80    | 0.005 | 0        | 0.2 | 0.5   | 0     | 0.5    | 16        | 0.9375 | 0.9175 | 0.7992 |
-| yolov7-tiny27 | Winderface | 80    | 0.01  | 1        | 0.2 | 0.5   | 0.05  | 1.0    | 16        | Text   | Text   | Text   |
+| Name                            | Dataset    | Epoch | lmks  | loss_ota | lrf  | shear | mixup | mosaic | batchsize | Easy   | Medium | Hard   |
+| ------------------------------- | ---------- | ----- | ----- | -------- | ---- | ----- | ----- | ------ | --------- | ------ | ------ | ------ |
+| yolov7-tiny27                   | Winderface | 80    | 0.005 | 0        | 0.2  | 0.5   | 0     | 0.5    | 16        | 0.9375 | 0.9175 | 0.7992 |
+| yolov7-tiny30                   | Winderface | 80    | 0.01  | 1        | 0.2  | 0.5   | 0.05  | 1.0    | 16        | 0.9378 | 0.9172 | 0.7987 |
+| yolov7-tiny32 (linear_lr=False) | Winderface | 80    | 0.01  | 1        | 0.2  | 0.5   | 0.05  | 1.0    | 16        | 0.9374 | 0.9169 | 0.8011 |
+| yolov7-tiny33                   | Winderface | 80    | 0.005 | 1        | 0.2  | 0.5   | 0.05  | 1.0    | 16        | 0.9402 | 0.9197 | 0.8038 |
+| yolov7-tiny36 (linear_lr=False) | Winderface | 80    | 0.005 | 1        | 0.2  | 0.5   | 0.05  | 1.0    | 16        | 0.9351 | 0.9167 | 0.7995 |
+| yolov7-tiny35 (linear_lr=False) | Winderface | 80    | 0.005 | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.9339 | 0.9163 | 0.7996 |
+| yolov7-tiny37                   | Winderface | 80    | 0.005 | 1        | 0.01 | 0.0   | 0.05  | 1.0    | 16        | 0.9362 | 0.9175 | 0.8010 |
