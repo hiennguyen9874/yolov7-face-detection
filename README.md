@@ -14,6 +14,15 @@ Custom Yolov7 to detection face and estimation landmark.
     </a>
 </div>
 
+## Install
+
+- `pip3 install -r requirements.txt`
+- `pip3 install Cython`
+- `cd evaluation && sudo python3 setup.py install`
+- [daquexian/onnx-simplifier](https://github.com/daquexian/onnx-simplifier)
+- [onnx-graphsurgeon](https://github.com/NVIDIA/TensorRT/tree/main/tools/onnx-graphsurgeon)
+- If export tensorRT [hiennguyen9874/TensorRT](https://github.com/hiennguyen9874/TensorRT)
+
 ## Performance
 
 | Name        | Dataset    | Epoch | Easy   | Medium | Hard   |
@@ -52,6 +61,9 @@ Custom Yolov7 to detection face and estimation landmark.
           - wider_hard_val.mat
           - wider_face_val.mat
   ```
+- Convert label to yolo format:
+  - `python3 scripts/convert_to_yolo.py --root ./widerface --image-folder WIDER_train/images --label-file train/label.txt --txt-file train.txt`
+  - `python3 scripts/convert_to_yolo.py --root ./widerface --image-folder WIDER_val/images --label-file val/label.txt --txt-file val.txt`
 - Modify path of `winderface` folder in [./data/winderface.yaml](./data/winderface.yaml)
 
 ## Detect
@@ -89,7 +101,7 @@ Custom Yolov7 to detection face and estimation landmark.
 
 ## TODO
 
-- How to achieve map of yolov7-tiny in [deepcam-cn/yolov5-face](https://github.com/deepcam-cn/yolov5-face)
+- How to achieve mAP of yolov7-tiny in [deepcam-cn/yolov5-face](https://github.com/deepcam-cn/yolov5-face)
 
 ## Acknowledgments
 
