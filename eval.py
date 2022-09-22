@@ -180,7 +180,7 @@ if __name__ == "__main__":
     )
     opt = parser.parse_args()
 
-    opt.annotation_folder = os.path.join(opt.data_root, "val")
+    opt.annotation_folder = os.path.join(opt.data_root, "ground_truth")
     opt.images_folder = os.path.join(opt.data_root, "WIDER_val", "images")
 
     print(opt)
