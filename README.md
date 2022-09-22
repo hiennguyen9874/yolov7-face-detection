@@ -14,12 +14,6 @@ Custom Yolov7 to detection face and estimation landmark.
     </a>
 </div>
 
-<div align="center">
-    <a href="./">
-        <img src="./figure/zidane.jpg" width="75%"/>
-    </a>
-</div>
-
 ## Performance
 
 | Name        | Dataset    | Epoch | Easy   | Medium | Hard   |
@@ -77,9 +71,25 @@ Custom Yolov7 to detection face and estimation landmark.
 
 - Multiple GPU training: `torchrun --standalone --nnodes=1 --nproc_per_node 2 ./train.py --device 0,1 --batch-size 16 --data data/widerface.yaml --img 640 640 --cfg cfg/yolov7-tiny-landmark.yaml --weights ./weights/yolov7-tiny.pt --name yolov7-tiny --hyp data/hyp.scratch.tiny.yaml --noautoanchor --sync-bn --linear-lr --epochs 80`
 
+## Export
+
+### ONNX
+
+- `python3 export.py --weights ./weights/yolov7-tiny.pt --img-size 640 --batch-size 1 --dynamic-batch --grid --end2end --max-wh 640 --topk-all 100 --iou-thres 0.5 --conf-thres 0.2 --device 1 --simplify`
+
+### TensorRT
+
+- `python3 export.py --weights ./weights/yolov7-tiny.pt --img-size 640 --batch-size 1 --dynamic-batch --grid --end2end --max-wh 640 --topk-all 100 --iou-thres 0.5 --conf-thres 0.2 --device 1 --simplify --cleanup --trt`
+
+- `/usr/src/tensorrt/bin/trtexec --onnx=./weights/yolov7-tiny.onnx --saveEngine=./weights/yolov7-tiny-nms-trt.trt --workspace=8192 --fp16 --minShapes=images:1x3x640x640 --optShapes=images:1x3x640x640 --maxShapes=images:4x3x640x640 --shapes=images:1x3x640x640`
+
 ## Bugs
 
 - val/llmks_loss = 0?
+
+## TODO
+
+- How to achieve map of yolov7-tiny in [deepcam-cn/yolov5-face](https://github.com/deepcam-cn/yolov5-face)
 
 ## Acknowledgments
 
