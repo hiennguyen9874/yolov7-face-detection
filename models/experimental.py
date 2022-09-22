@@ -306,6 +306,65 @@ class TRT_NMS3(torch.autograd.Function):
         )
 
 
+class TRT_NMS4(torch.autograd.Function):
+    """TensorRT NMS operation"""
+
+    @staticmethod
+    def forward(
+        ctx,
+        boxes,
+        scores,
+        lmks,
+        background_class=-1,
+        box_coding=1,
+        iou_threshold=0.45,
+        max_output_boxes=100,
+        plugin_version="1",
+        score_activation=0,
+        score_threshold=0.25,
+    ):
+        batch_size, num_boxes, num_classes = scores.shape
+        num_det = torch.randint(0, max_output_boxes, (batch_size, 1), dtype=torch.int32)
+        det_boxes = torch.randn(batch_size, max_output_boxes, 4)
+        det_scores = torch.randn(batch_size, max_output_boxes)
+        det_classes = torch.randint(
+            0, num_classes, (batch_size, max_output_boxes), dtype=torch.int32
+        )
+        det_lmks = torch.randn(batch_size, max_output_boxes, 10)
+        return num_det, det_boxes, det_scores, det_classes, det_lmks
+
+    @staticmethod
+    def symbolic(
+        g,
+        boxes,
+        scores,
+        lmks,
+        background_class=-1,
+        box_coding=1,
+        iou_threshold=0.45,
+        max_output_boxes=100,
+        plugin_version="1",
+        score_activation=0,
+        score_threshold=0.25,
+    ):
+        out = g.op(
+            "TRT::EfficientNMSLandmark_TRT",
+            boxes,
+            scores,
+            lmks,
+            background_class_i=background_class,
+            box_coding_i=box_coding,
+            iou_threshold_f=iou_threshold,
+            max_output_boxes_i=max_output_boxes,
+            plugin_version_s=plugin_version,
+            score_activation_i=score_activation,
+            score_threshold_f=score_threshold,
+            outputs=5,
+        )
+        nums, boxes, scores, classes, lmks = out
+        return nums, boxes, scores, classes, lmks
+
+
 class ONNX_TRT(nn.Module):
     """onnx module with TensorRT NMS operation."""
 
@@ -314,6 +373,7 @@ class ONNX_TRT(nn.Module):
         self.device = device if device else torch.device("cpu")
         self.max_wh = max_wh
         self.max_obj_i = max_obj
+        self.type_nms_padding = 1  # or 1, or 2
 
         self.register_buffer("max_obj", torch.tensor([max_obj]))
         self.register_buffer("iou_threshold", torch.tensor([iou_thres]))
@@ -372,44 +432,48 @@ class ONNX_TRT(nn.Module):
         selected_categories = category_id[X, Y].float()
         selected_scores = max_score[X, Y]
         selected_lmks = lmks[X, Y]
-        
+
         # X = X.unsqueeze(1).float()
         # return torch.cat(
         #     [X, selected_boxes, selected_categories, selected_scores, selected_lmks], 1
         # )
 
-        # If sum(axis=1) is zero
-        num_object1 = (
-            torch.topk(
-                torch.where(
-                    selected_indices.sum(dim=1) > 0,
-                    torch.arange(0, total_object, 1, device=self.device, dtype=torch.int32),
-                    torch.zeros(total_object, device=self.device, dtype=torch.int32),
-                ).to(torch.float),
-                k=1,
-                largest=True,
-            )[1]
-            + 1
-        ).reshape((1,))
+        if self.type_nms_padding == 0 or self.type_nms_padding == 2:
+            # If sum(axis=1) is zero
+            num_object1 = (
+                torch.topk(
+                    torch.where(
+                        selected_indices.sum(dim=1) > 0,
+                        torch.arange(0, total_object, 1, device=self.device, dtype=torch.int32),
+                        torch.zeros(total_object, device=self.device, dtype=torch.int32),
+                    ).to(torch.float),
+                    k=1,
+                    largest=True,
+                )[1]
+                + 1
+            ).reshape((1,))
+            num_object = num_object1
+        elif self.type_nms_padding == 1 or self.type_nms_padding == 2:
+            # Check lag not change
+            selected_indices_lag = (selected_indices[1:] - selected_indices[:-1]).sum(dim=1)
+            num_object2 = (
+                torch.topk(
+                    torch.where(
+                        selected_indices_lag != 0,
+                        torch.arange(0, total_object - 1, device=self.device, dtype=torch.int32),
+                        torch.zeros((1,), device=self.device, dtype=torch.int32),
+                    ).to(torch.float),
+                    k=1,
+                    largest=True,
+                )[1]
+                + 2
+            ).reshape((1,))
+            num_object = num_object2
 
-        # Check lag not change
-        selected_indices_lag = (selected_indices[1:] - selected_indices[:-1]).sum(dim=1)
-        num_object2 = (
-            torch.topk(
-                torch.where(
-                    selected_indices_lag != 0,
-                    torch.arange(0, total_object - 1, device=self.device, dtype=torch.int32),
-                    torch.zeros((1,), device=self.device, dtype=torch.int32),
-                ).to(torch.float),
-                k=1,
-                largest=True,
-            )[1]
-            + 2
-        ).reshape((1,))
-
-        num_object = (selected_indices_lag.sum() != 0).to(torch.float32) * torch.min(
-            num_object1, num_object2
-        )
+        if self.type_nms_padding == 2:
+            num_object = (selected_indices_lag.sum() != 0).to(torch.float32) * torch.min(
+                num_object1, num_object2
+            )
 
         batch_indices_per_batch = torch.where(
             (
@@ -455,6 +519,41 @@ class ONNX_TRT(nn.Module):
         return num_det, det_boxes, det_scores, det_classes, det_lmks
 
 
+class ONNX_TRT2(nn.Module):
+    """onnx module with TensorRT NMS operation."""
+
+    def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=None, device=None):
+        super().__init__()
+        self.device = device if device else torch.device("cpu")
+        self.background_class = (-1,)
+        self.box_coding = (1,)
+        self.iou_threshold = iou_thres
+        self.max_obj = max_obj
+        self.plugin_version = "1"
+        self.score_activation = 0
+        self.score_threshold = score_thres
+
+    def forward(self, x):
+        boxes = x[:, :, :4]
+        conf = x[:, :, 4:5]
+        scores = x[:, :, 5:6]
+        lmks = x[:, :, 6:16]
+        scores *= conf
+        num_det, det_boxes, det_scores, det_classes, det_lmks = TRT_NMS4.apply(
+            boxes,
+            scores,
+            lmks,
+            self.background_class,
+            self.box_coding,
+            self.iou_threshold,
+            self.max_obj,
+            self.plugin_version,
+            self.score_activation,
+            self.score_threshold,
+        )
+        return num_det, det_boxes, det_scores, det_classes, det_lmks
+
+
 class End2End(nn.Module):
     """export onnx or tensorrt model with NMS operation."""
 
@@ -473,7 +572,7 @@ class End2End(nn.Module):
         assert isinstance(max_wh, (int)) or max_wh is None
         self.model = model.to(device)
         self.model.model[-1].end2end = True
-        self.patch_model = ONNX_TRT if trt else ONNX_ORT
+        self.patch_model = ONNX_TRT2 if trt else ONNX_ORT
         self.end2end = self.patch_model(
             max_obj=max_obj,
             iou_thres=iou_thres,
