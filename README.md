@@ -1,4 +1,4 @@
-# YOLOV7 Face Detection
+# YOLOv7 Face Detection
 
 Custom Yolov7 to detection face and estimation landmark.
 
