@@ -30,6 +30,7 @@ Custom Yolov7 to detection face and estimation landmark.
 | yolov7-tiny | Winderface | 80    | 0.9402 | 0.9197 | 0.8038 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov7-tiny33.pt) |
 | yolov7-tiny | Winderface | 300   | 0.9470 | 0.9270 | 0.8183 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov7-tiny41.pt) |
 | yolov7      | Winderface | 80    | 0.9563 | 0.9423 | 0.8639 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov73.pt)       |
+| yolov7      | Winderface | 300   | 0.9645 | 0.9526 | 0.8787 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov75.pt)       |
 
 ## Data preparation
 
