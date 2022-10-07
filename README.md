@@ -1,6 +1,6 @@
 # YOLOv7 Face Detection
 
-Custom Yolov7 to detection face and estimation landmark.
+Custom Yolov7 to detect face and estimate landmark.
 
 <div align="center">
     <a href="./">
