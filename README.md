@@ -90,7 +90,7 @@ Custom Yolov7 to detect face and estimate landmark.
 
 ### ONNX
 
-- `python3 export.py --weights ./weights/yolov7-tiny.pt --img-size 640 --batch-size 1 --dynamic-batch --grid --end2end --max-wh 640 --topk-all 100 --iou-thres 0.5 --conf-thres 0.2 --device 1 --simplify`
+- `python3 export.py --weights ./weights/yolov7-tiny.pt --img-size 640 --batch-size 1 --dynamic-batch --grid --end2end --max-wh 640 --topk-all 100 --iou-thres 0.5 --conf-thres 0.2 --device 1 --simplify --cleanup`
 
 - [tools/Yolov7onnx_mask.ipynb](./tools/Yolov7onnx_mask.ipynb)
 
