@@ -67,7 +67,7 @@ Custom Yolov7 to detect face and estimate landmark.
 - Convert label to yolo format:
   - `python3 scripts/convert_to_yolo.py --root ./widerface --image-folder WIDER_train/images --label-file train/label.txt --txt-file train.txt`
   - `python3 scripts/convert_to_yolo.py --root ./widerface --image-folder WIDER_val/images --label-file val/label.txt --txt-file val.txt`
-- Modify path of `winderface` folder in [./data/winderface.yaml](./data/winderface.yaml)
+- Modify path of `winderface` folder in [data/winderface.yaml](data/winderface.yaml)
 
 ## Detect
 
