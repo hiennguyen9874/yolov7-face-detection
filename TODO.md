@@ -1,7 +1,4 @@
 - val/llmks_loss = 0?
-- mosaic
-- mixup
-- lmks
-- ComputeLossOTA
-- batch-size 16
 - landmark conf for each point
+- https://github.com/jinfagang/yolov7-face
+- https://github.com/derronqi/yolov7-face
