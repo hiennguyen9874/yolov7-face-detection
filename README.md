@@ -95,7 +95,7 @@ Custom Yolov7 to detect face and estimate landmark.
 - [tools/Yolov7onnx_mask.ipynb](./tools/Yolov7onnx_mask.ipynb)
 
 ### TensorRT
-- Install [custom TensorRT pluin](https://github.com/hiennguyen9874/TensorRT#install)
+- Install [custom TensorRT plugin](https://github.com/hiennguyen9874/TensorRT#install)
 
 - `python3 export.py --weights ./weights/yolov7-tiny.pt --img-size 640 --batch-size 1 --dynamic-batch --grid --end2end --max-wh 640 --topk-all 100 --iou-thres 0.5 --conf-thres 0.2 --device 1 --simplify --cleanup --trt`
 
