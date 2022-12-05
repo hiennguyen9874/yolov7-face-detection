@@ -191,10 +191,12 @@ class ONNX_ORT(nn.Module):
         )
 
     def forward(self, x):
+        # TODO:
         boxes = x[:, :, :4]
         conf = x[:, :, 4:5]
         scores = x[:, :, 5:6]
-        lmks = x[:, :, 6:16]
+        lmks = x[:, :, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]]
+        lmks_mask = x[:, :, [8, 11, 14, 17, 20]]
         scores *= conf
         boxes @= self.convert_matrix
         max_score, category_id = scores.max(2, keepdim=True)
@@ -393,10 +395,12 @@ class ONNX_TRT(nn.Module):
         )
 
     def forward(self, x):
+        # TODO:
         boxes = x[:, :, :4]
         conf = x[:, :, 4:5]
         scores = x[:, :, 5:6]
-        lmks = x[:, :, 6:16]
+        lmks = x[:, :, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]]
+        lmks_mask = x[:, :, [8, 11, 14, 17, 20]]
 
         batch_size = boxes.shape[0]
 
@@ -534,10 +538,13 @@ class ONNX_TRT2(nn.Module):
         self.score_threshold = score_thres
 
     def forward(self, x):
+        # TODO:
         boxes = x[:, :, :4]
         conf = x[:, :, 4:5]
         scores = x[:, :, 5:6]
-        lmks = x[:, :, 6:16]
+        lmks = x[:, :, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]]
+        lmks_mask = x[:, :, [8, 11, 14, 17, 20]]
+
         scores *= conf
         num_det, det_boxes, det_scores, det_classes, det_lmks = TRT_NMS4.apply(
             boxes,

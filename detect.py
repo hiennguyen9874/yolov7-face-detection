@@ -131,7 +131,9 @@ def detect(save_img=False):
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-                det[:, 6:16] = scale_coords_lmks(img.shape[2:], det[:, 6:16], im0.shape).round()
+                det[:, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]] = scale_coords_lmks(
+                    img.shape[2:], det[:, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]], im0.shape
+                ).round()
 
                 # Print results
                 for c in det[:, 5].unique():
@@ -140,11 +142,12 @@ def detect(save_img=False):
 
                 # Write results
                 for det_per_box in reversed(det):
-                    xyxy, conf, cls, lmks = (
+                    xyxy, conf, cls, lmks, lmks_mask = (
                         det_per_box[0:4],
                         det_per_box[4],
                         det_per_box[5],
-                        det_per_box[6:16],
+                        det_per_box[[6, 7, 9, 10, 12, 13, 15, 16, 18, 19]],
+                        det_per_box[[8, 11, 14, 17, 20]],
                     )
                     if save_txt:  # Write to file
                         xywh = (
@@ -163,7 +166,7 @@ def detect(save_img=False):
                             color=colors[int(cls)],
                             line_thickness=1,
                             lmks=lmks,
-                            lmks_mask=[1] * (len(lmks) // 2),
+                            lmks_mask=(lmks_mask > 0.5).float(),
                             lmks_normalized=False,
                             radius=4,
                         )
