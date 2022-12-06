@@ -565,7 +565,7 @@ class ComputeLoss:
                 plmks_y = ps[:, 5 + self.nc + 1 :: 3] * 2.0 - 0.5
                 plmks_s = ps[:, 5 + self.nc + 2 :: 3] * 2.0 - 0.5
 
-                llmks_mask += self.BCElandmark(plmks_s, tlmks_mask[i].float())
+                llmks_mask += self.BCElandmark(plmks_s, tlmks_mask[i])
 
                 llmks += (
                     self.landmarks_loss(tlmks[i][:, 0::2], plmks_x, tlmks_mask[i])
@@ -670,11 +670,7 @@ class ComputeLoss:
             lmks[:, [8, 9]] = lmks[:, [8, 9]] - gij
             tlmks.append(lmks)
 
-            lmks_mask = torch.where(
-                t[:, 16:21].repeat_interleave(repeats=2, dim=1) > 0,
-                torch.full_like(lmks, 1.0),
-                torch.full_like(lmks, 0.0),
-            )
+            lmks_mask = (t[:, 16:21] > 0).float()
             tlmks_mask.append(lmks_mask)
 
         return tcls, tbox, tlmks, tlmks_mask, indices, anch
@@ -787,14 +783,9 @@ class ComputeLossOTA:
                 selected_tlmks[:, [6, 7]] -= grid
                 selected_tlmks[:, [8, 9]] -= grid
 
-                # Landmark mask
-                selected_tlmks_mask = torch.where(
-                    targets[i][:, 16:21].repeat_interleave(repeats=2, dim=1) > 0,
-                    torch.full_like(selected_tlmks, 1.0),
-                    torch.full_like(selected_tlmks, 0.0),
-                )
+                selected_tlmks_mask = (targets[i][:, 16:21] > 0).float()
 
-                llmks_mask += self.BCElandmark(plmks_s, selected_tlmks_mask.float())
+                llmks_mask += self.BCElandmark(plmks_s, selected_tlmks_mask)
 
                 llmks += (
                     self.landmarks_loss(selected_tlmks[:, 0::2], plmks_x, selected_tlmks_mask)

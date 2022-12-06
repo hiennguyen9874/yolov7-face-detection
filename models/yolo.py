@@ -503,8 +503,7 @@ class ILandmark(nn.Module):
                     wh = wh**2 * (4 * self.anchor_grid[i].data)  # new wh
                     lmks = (
                         lmks * 2.0 * self.stride[i]
-                        + (self.grid[i].repeat((1, 1, 1, 1, self.nlandmark)) - 0.5)
-                        * self.stride[i]
+                        + (self.grid[i].repeat((1, 1, 1, 1, self.nlandmark)) - 0.5) * self.stride[i]
                     )
 
                     y = torch.cat((xy, wh, conf, lmks), 4)
@@ -1045,16 +1044,16 @@ class Model(nn.Module):
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     logger.info("\n%3s%18s%3s%10s  %-40s%-30s" % ("", "from", "n", "params", "module", "arguments"))
-    anchors, nc, nlandmark, gd, gw, dw_conv_landmark = (
+    anchors, nc, nkpt, gd, gw, dw_conv_kpt = (
         d["anchors"],
         d["nc"],
-        d["nlandmark"],
+        d["nkpt"],
         d["depth_multiple"],
         d["width_multiple"],
-        d["dw_conv_landmark"],
+        d["dw_conv_kpt"],
     )
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5 + 2 * nlandmark + 1)  # number of outputs = anchors * (classes + 5)
+    no = na * (nc + 5 + 3 * nkpt)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d["backbone"] + d["head"]):  # from, number, module, args
@@ -1176,8 +1175,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
-            if "dw_conv_landmark" in d.keys():
-                args_dict = {"dw_conv_landmark": d["dw_conv_landmark"]}
+            if "dw_conv_kpt" in d.keys():
+                args_dict = {"dw_conv_kpt": d["dw_conv_kpt"]}
         elif m is ReOrg:
             c2 = ch[f] * 4
         elif m is Contract:
