@@ -316,17 +316,17 @@ class IKeypoint(nn.Module):
                     )  # wh
                     if self.nkpt != 0:
                         x_kpt[..., 0::3] = (
-                            x_kpt[..., ::3] * 2.0 - 0.5 + kpt_grid_x.repeat(1, 1, 1, 1, 17)
+                            x_kpt[..., ::3] * 2.0 - 0.5 + kpt_grid_x.repeat(1, 1, 1, 1, self.nkpt)
                         ) * self.stride[
                             i
                         ]  # xy
                         x_kpt[..., 1::3] = (
-                            x_kpt[..., 1::3] * 2.0 - 0.5 + kpt_grid_y.repeat(1, 1, 1, 1, 17)
+                            x_kpt[..., 1::3] * 2.0 - 0.5 + kpt_grid_y.repeat(1, 1, 1, 1, self.nkpt)
                         ) * self.stride[
                             i
                         ]  # xy
-                        # x_kpt[..., 0::3] = (x_kpt[..., ::3] + kpt_grid_x.repeat(1,1,1,1,17)) * self.stride[i]  # xy
-                        # x_kpt[..., 1::3] = (x_kpt[..., 1::3] + kpt_grid_y.repeat(1,1,1,1,17)) * self.stride[i]  # xy
+                        # x_kpt[..., 0::3] = (x_kpt[..., ::3] + kpt_grid_x.repeat(1,1,1,1,self.nkpt)) * self.stride[i]  # xy
+                        # x_kpt[..., 1::3] = (x_kpt[..., 1::3] + kpt_grid_y.repeat(1,1,1,1,self.nkpt)) * self.stride[i]  # xy
                         # print('=============')
                         # print(self.anchor_grid[i].shape)
                         # print(self.anchor_grid[i][...,0].unsqueeze(4).shape)
