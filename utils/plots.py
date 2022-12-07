@@ -193,9 +193,9 @@ def output_to_target(output):
             conf = out_per_box[4]
             cls = out_per_box[5]
             lmks = out_per_box[[6, 7, 9, 10, 12, 13, 15, 16, 18, 19]]
-            lmks_mask = (out_per_box[[8, 11, 14, 17, 20]] > 0.5).float()
+            lmks_mask = (out_per_box[[8, 11, 14, 17, 20]] > 0.5).astype(np.float32)
             targets.append(
-                [i, cls, *list(*xyxy2xywh(np.array(box)[None])), conf, *lmks, *([1] * 5)]
+                [i, cls, *list(*xyxy2xywh(np.array(box)[None])), conf, *lmks, *lmks_mask]
             )
     return np.array(targets)
 
