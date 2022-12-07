@@ -545,7 +545,7 @@ class ComputeLoss:
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(
-                    pbox.T, tbox[i], x1y1x2y2=False, CIoU=True
+                    pbox.T, tbox[i], x1y1x2y2=False, EIoU=True
                 )  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
@@ -563,7 +563,7 @@ class ComputeLoss:
 
                 plmks_x = ps[:, 5 + self.nc :: 3] * 2.0 - 0.5
                 plmks_y = ps[:, 5 + self.nc + 1 :: 3] * 2.0 - 0.5
-                plmks_s = ps[:, 5 + self.nc + 2 :: 3] * 2.0 - 0.5
+                plmks_s = ps[:, 5 + self.nc + 2 :: 3]
 
                 llmks_mask += self.BCElandmark(plmks_s, tlmks_mask[i])
 
@@ -755,7 +755,7 @@ class ComputeLossOTA:
                 selected_tbox = targets[i][:, 2:6] * pre_gen_gains[i]
                 selected_tbox[:, :2] -= grid
                 iou = bbox_iou(
-                    pbox.T, selected_tbox, x1y1x2y2=False, CIoU=True
+                    pbox.T, selected_tbox, x1y1x2y2=False, EIoU=True
                 )  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
@@ -774,7 +774,7 @@ class ComputeLossOTA:
                 # Landmark
                 plmks_x = ps[:, 5 + self.nc :: 3] * 2.0 - 0.5
                 plmks_y = ps[:, 5 + self.nc + 1 :: 3] * 2.0 - 0.5
-                plmks_s = ps[:, 5 + self.nc + 2 :: 3] * 2.0 - 0.5
+                plmks_s = ps[:, 5 + self.nc + 2 :: 3]
 
                 selected_tlmks = targets[i][:, 6:16] * pre_gen_gains_lmks[i]
                 selected_tlmks[:, [0, 1]] -= grid
