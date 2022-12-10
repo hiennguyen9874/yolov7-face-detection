@@ -164,7 +164,7 @@ class IDetect(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
 
                 y = x[i].sigmoid()
                 if not torch.onnx.is_in_onnx_export():
@@ -232,6 +232,8 @@ class IDetect(nn.Module):
 class IKeypoint(nn.Module):
     stride = None  # strides computed during build
     export = False  # onnx export
+    end2end = False
+    concat = False
 
     def __init__(
         self, nc=80, anchors=(), nkpt=17, ch=(), inplace=True, dw_conv_kpt=False
@@ -282,6 +284,7 @@ class IKeypoint(nn.Module):
         self.inplace = inplace  # use in-place ops (e.g. slice assignment)
 
     def forward(self, x):
+        assert self.nc == 1
         # x = x.copy()  # for profiling
         z = []  # inference output
         self.training |= self.export
@@ -300,7 +303,7 @@ class IKeypoint(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
                 kpt_grid_x = self.grid[i][..., 0:1]
                 kpt_grid_y = self.grid[i][..., 1:2]
 
@@ -325,16 +328,6 @@ class IKeypoint(nn.Module):
                         ) * self.stride[
                             i
                         ]  # xy
-                        # x_kpt[..., 0::3] = (x_kpt[..., ::3] + kpt_grid_x.repeat(1,1,1,1,self.nkpt)) * self.stride[i]  # xy
-                        # x_kpt[..., 1::3] = (x_kpt[..., 1::3] + kpt_grid_y.repeat(1,1,1,1,self.nkpt)) * self.stride[i]  # xy
-                        # print('=============')
-                        # print(self.anchor_grid[i].shape)
-                        # print(self.anchor_grid[i][...,0].unsqueeze(4).shape)
-                        # print(x_kpt[..., 0::3].shape)
-                        # x_kpt[..., 0::3] = ((x_kpt[..., 0::3].tanh() * 2.) ** 3 * self.anchor_grid[i][...,0].unsqueeze(4).repeat(1,1,1,1,self.nkpt)) + kpt_grid_x.repeat(1,1,1,1,17) * self.stride[i]  # xy
-                        # x_kpt[..., 1::3] = ((x_kpt[..., 1::3].tanh() * 2.) ** 3 * self.anchor_grid[i][...,1].unsqueeze(4).repeat(1,1,1,1,self.nkpt)) + kpt_grid_y.repeat(1,1,1,1,17) * self.stride[i]  # xy
-                        # x_kpt[..., 0::3] = (((x_kpt[..., 0::3].sigmoid() * 4.) ** 2 - 8.) * self.anchor_grid[i][...,0].unsqueeze(4).repeat(1,1,1,1,self.nkpt)) + kpt_grid_x.repeat(1,1,1,1,17) * self.stride[i]  # xy
-                        # x_kpt[..., 1::3] = (((x_kpt[..., 1::3].sigmoid() * 4.) ** 2 - 8.) * self.anchor_grid[i][...,1].unsqueeze(4).repeat(1,1,1,1,self.nkpt)) + kpt_grid_y.repeat(1,1,1,1,17) * self.stride[i]  # xy
                         x_kpt[..., 2::3] = x_kpt[..., 2::3].sigmoid()
 
                     y = torch.cat((xy, wh, y[..., 4:], x_kpt), dim=-1)
@@ -353,6 +346,129 @@ class IKeypoint(nn.Module):
                 z.append(y.view(bs, self.na * ny * nx, self.no))
 
         return x if self.training else (torch.cat(z, 1), x)
+
+    def fuseforward(self, x):
+        assert self.nkpt == 5 and self.nc == 1
+
+        # x = x.copy()  # for profiling
+        z = []  # inference output
+        self.training |= self.export
+        for i in range(self.nl):
+            x[i] = torch.cat((self.m[i](x[i]), self.m_kpt[i](x[i])), dim=1)
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+
+            if not self.training:  # inference
+                if self.grid[i].shape[2:4] != x[i].shape[2:4]:
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
+
+                y = x[i]
+                if not torch.onnx.is_in_onnx_export():
+                    y[..., :6] = y[..., :6].sigmoid()
+                    y[..., 0:2] = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
+                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                    y[..., [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]] = (
+                        y[..., [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]] * 2.0
+                        - 0.5
+                        + self.grid[i].repeat((1, 1, 1, 1, self.nkpt))
+                    ) * self.stride[i]
+                    y[..., [8, 11, 14, 17, 20]] = y[..., [8, 11, 14, 17, 20]].sigmoid()
+                else:
+                    xy = y[..., [0, 1]]
+                    wh = y[..., [2, 3]]
+                    conf = y[..., [4, 5]]
+
+                    kpt_xy_1 = y[..., [6, 7]]
+                    kpt_conf_1 = y[..., [8]]
+                    kpt_xy_2 = y[..., [9, 10]]
+                    kpt_conf_2 = y[..., [11]]
+                    kpt_xy_3 = y[..., [12, 13]]
+                    kpt_conf_3 = y[..., [14]]
+                    kpt_xy_4 = y[..., [15, 16]]
+                    kpt_conf_4 = y[..., [17]]
+                    kpt_xy_5 = y[..., [18, 19]]
+                    kpt_conf_5 = y[..., [20]]
+
+                    xy = xy.sigmoid()
+                    wh = wh.sigmoid()
+                    conf = conf.sigmoid()
+
+                    kpt_conf_1 = kpt_conf_1.sigmoid()
+                    kpt_conf_2 = kpt_conf_2.sigmoid()
+                    kpt_conf_3 = kpt_conf_3.sigmoid()
+                    kpt_conf_4 = kpt_conf_4.sigmoid()
+                    kpt_conf_5 = kpt_conf_5.sigmoid()
+
+                    xy = xy * 2.0 * self.stride[i] + (self.grid[i] - 0.5) * self.stride[i]
+                    wh = wh**2 * (4 * self.anchor_grid[i].data)  # new wh
+
+                    kpt_xy_1 = (
+                        kpt_xy_1 * 2.0 * self.stride[i]
+                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                    )
+                    kpt_xy_2 = (
+                        kpt_xy_2 * 2.0 * self.stride[i]
+                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                    )
+                    kpt_xy_3 = (
+                        kpt_xy_3 * 2.0 * self.stride[i]
+                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                    )
+                    kpt_xy_4 = (
+                        kpt_xy_4 * 2.0 * self.stride[i]
+                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                    )
+                    kpt_xy_5 = (
+                        kpt_xy_5 * 2.0 * self.stride[i]
+                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                    )
+
+                    y = torch.cat(
+                        (
+                            xy,
+                            wh,
+                            conf,
+                            kpt_xy_1,
+                            kpt_conf_1,
+                            kpt_xy_2,
+                            kpt_conf_2,
+                            kpt_xy_3,
+                            kpt_conf_3,
+                            kpt_xy_4,
+                            kpt_conf_4,
+                            kpt_xy_5,
+                            kpt_conf_5,
+                        ),
+                        4,
+                    )
+                z.append(y.view(bs, self.na * ny * nx, self.no))
+
+        if self.training:
+            out = x
+        elif self.end2end:
+            out = torch.cat(z, 1)
+        elif self.concat:
+            out = torch.cat(z, 1)
+        else:
+            out = (torch.cat(z, 1), x)
+
+        return out
+
+    def fuse(self):
+        print("IKeypoint.fuse")
+        # fuse ImplicitA and Convolution
+        for i in range(len(self.m)):
+            c1, c2, _, _ = self.m[i].weight.shape
+            c1_, c2_, _, _ = self.ia[i].implicit.shape
+            self.m[i].bias += torch.matmul(
+                self.m[i].weight.reshape(c1, c2), self.ia[i].implicit.reshape(c2_, c1_)
+            ).squeeze(1)
+
+        # fuse ImplicitM and Convolution
+        for i in range(len(self.m)):
+            c1, c2, _, _ = self.im[i].implicit.shape
+            self.m[i].bias *= self.im[i].implicit.reshape(c2)
+            self.m[i].weight *= self.im[i].implicit.transpose(0, 1)
 
     @staticmethod
     def _make_grid(nx=20, ny=20):
@@ -429,7 +545,7 @@ class ILandmark(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
                 landmark_grid_x = self.grid[i][..., 0:1]
                 landmark_grid_y = self.grid[i][..., 1:2]
 
@@ -479,7 +595,7 @@ class ILandmark(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
 
                 # y = x[i].sigmoid()
                 y = x[i]
@@ -591,7 +707,7 @@ class IAuxDetect(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
 
                 y = x[i].sigmoid()
                 if not torch.onnx.is_in_onnx_export():
@@ -619,7 +735,7 @@ class IAuxDetect(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
 
                 y = x[i].sigmoid()
                 if not torch.onnx.is_in_onnx_export():
@@ -729,7 +845,7 @@ class IBin(nn.Module):
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
-                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
+                    self.grid[i] = self._make_grid(nx, ny).to(x[i].device).to(x[i].dtype)
 
                 y = x[i].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2.0 - 0.5 + self.grid[i]) * self.stride[i]  # xy
@@ -1010,7 +1126,7 @@ class Model(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, "bn")  # remove batchnorm
                 m.forward = m.fuseforward  # update forward
-            elif isinstance(m, (IDetect, IAuxDetect, ILandmark)):
+            elif isinstance(m, (IDetect, IAuxDetect, ILandmark, IKeypoint)):
                 m.fuse()
                 m.forward = m.fuseforward
         self.info()
