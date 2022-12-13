@@ -25,12 +25,10 @@ Custom Yolov7 to detect face and estimate landmark.
 
 ## Performance
 
-| Name        | Dataset    | Epoch | Easy   | Medium | Hard   | Link                                                                                                    |
-| ----------- | ---------- | ----- | ------ | ------ | ------ | ------------------------------------------------------------------------------------------------------- |
-| yolov7-tiny | Winderface | 80    | 0.9402 | 0.9197 | 0.8038 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov7-tiny33.pt) |
-| yolov7-tiny | Winderface | 300   | 0.9470 | 0.9270 | 0.8183 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov7-tiny41.pt) |
-| yolov7      | Winderface | 80    | 0.9563 | 0.9423 | 0.8639 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov73.pt)       |
-| yolov7      | Winderface | 300   | 0.9645 | 0.9526 | 0.8787 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.1/yolov75.pt)       |
+| Name        | Dataset    | Easy   | Medium | Hard   | Link                                                                                                    |
+| ----------- | ---------- | ------ | ------ | ------ | ------------------------------------------------------------------------------------------------------- |
+| yolov7-tiny | Winderface | 0.9442 | 0.9247 | 0.8192 | [Link](https://github.com/hiennguyen9874/yolov7-face-detection/releases/download/v0.2/yolov7-tiny67.pt) |
+| yolov7      | Winderface |        |        |        |                                                                                                         |
 
 ## Data preparation
 
@@ -95,6 +93,7 @@ Custom Yolov7 to detect face and estimate landmark.
 - [tools/Yolov7onnx_mask.ipynb](./tools/Yolov7onnx_mask.ipynb)
 
 ### TensorRT
+
 - Install [custom TensorRT plugin](https://github.com/hiennguyen9874/TensorRT#install)
 
 - `python3 export.py --weights ./weights/yolov7-tiny.pt --img-size 640 --batch-size 1 --dynamic-batch --grid --end2end --max-wh 640 --topk-all 100 --iou-thres 0.5 --conf-thres 0.2 --device 1 --simplify --cleanup --trt`
