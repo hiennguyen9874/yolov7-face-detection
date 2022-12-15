@@ -113,6 +113,7 @@ if __name__ == "__main__":
                 "det_scores": {0: "batch"},
                 "det_classes": {0: "batch"},
                 "det_lmks": {0: "batch"},
+                "det_lmks_mask": {0: "batch"},
             }
         else:
             output_axes = {
@@ -137,7 +138,14 @@ if __name__ == "__main__":
                 device=device,
             )
             if opt.end2end and opt.trt:
-                output_names = ["num_dets", "det_boxes", "det_scores", "det_classes", "det_lmks"]
+                output_names = [
+                    "num_dets",
+                    "det_boxes",
+                    "det_scores",
+                    "det_classes",
+                    "det_lmks",
+                    "det_lmks_mask",
+                ]
                 shapes = [
                     opt.batch_size,
                     1,
@@ -151,6 +159,9 @@ if __name__ == "__main__":
                     opt.batch_size,
                     opt.topk_all,
                     10,
+                    opt.batch_size,
+                    opt.topk_all,
+                    5,
                 ]
             else:
                 output_names = ["output"]

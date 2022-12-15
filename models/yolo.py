@@ -403,24 +403,19 @@ class IKeypoint(nn.Module):
                     wh = wh**2 * (4 * self.anchor_grid[i].data)  # new wh
 
                     kpt_xy_1 = (
-                        kpt_xy_1 * 2.0 * self.stride[i]
-                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                        kpt_xy_1 * 2.0 * self.stride[i] + (self.grid[i] - 0.5) * self.stride[i]
                     )
                     kpt_xy_2 = (
-                        kpt_xy_2 * 2.0 * self.stride[i]
-                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                        kpt_xy_2 * 2.0 * self.stride[i] + (self.grid[i] - 0.5) * self.stride[i]
                     )
                     kpt_xy_3 = (
-                        kpt_xy_3 * 2.0 * self.stride[i]
-                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                        kpt_xy_3 * 2.0 * self.stride[i] + (self.grid[i] - 0.5) * self.stride[i]
                     )
                     kpt_xy_4 = (
-                        kpt_xy_4 * 2.0 * self.stride[i]
-                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                        kpt_xy_4 * 2.0 * self.stride[i] + (self.grid[i] - 0.5) * self.stride[i]
                     )
                     kpt_xy_5 = (
-                        kpt_xy_5 * 2.0 * self.stride[i]
-                        + (self.grid[i].repeat((1, 1, 1, 1, self.nkpt)) - 0.5) * self.stride[i]
+                        kpt_xy_5 * 2.0 * self.stride[i] + (self.grid[i] - 0.5) * self.stride[i]
                     )
 
                     y = torch.cat(
