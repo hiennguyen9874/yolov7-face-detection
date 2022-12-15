@@ -73,7 +73,7 @@ Custom Yolov7 to detect face and estimate landmark.
 
 ## Testing
 
-- `python3 eval.py --weights ./weights/yolov7-tiny.pt --data-root ./winderface --img-size 640 --conf-thres 0.02 --iou-thres 0.5 --device 0 --no-trace`
+- `python3 eval.py --weights ./weights/yolov7-tiny.pt --data-root ./winderface --img-size 640 --conf-thres 0.01 --iou-thres 0.5 --device 0 --no-trace`
 
 - `python3 evaluation/main.py -p ./outputs -g ./winderface/ground_truth`
 
