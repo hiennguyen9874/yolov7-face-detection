@@ -119,61 +119,6 @@ class ORT_NMS(torch.autograd.Function):
         )
 
 
-class TRT_NMS(torch.autograd.Function):
-    """TensorRT NMS operation"""
-
-    @staticmethod
-    def forward(
-        ctx,
-        boxes,
-        scores,
-        background_class=-1,
-        box_coding=1,
-        iou_threshold=0.45,
-        max_output_boxes=100,
-        plugin_version="1",
-        score_activation=0,
-        score_threshold=0.25,
-    ):
-        batch_size, num_boxes, num_classes = scores.shape
-        num_det = torch.randint(0, max_output_boxes, (batch_size, 1), dtype=torch.int32)
-        det_boxes = torch.randn(batch_size, max_output_boxes, 4)
-        det_scores = torch.randn(batch_size, max_output_boxes)
-        det_classes = torch.randint(
-            0, num_classes, (batch_size, max_output_boxes), dtype=torch.int32
-        )
-        return num_det, det_boxes, det_scores, det_classes
-
-    @staticmethod
-    def symbolic(
-        g,
-        boxes,
-        scores,
-        background_class=-1,
-        box_coding=1,
-        iou_threshold=0.45,
-        max_output_boxes=100,
-        plugin_version="1",
-        score_activation=0,
-        score_threshold=0.25,
-    ):
-        out = g.op(
-            "TRT::EfficientNMS_TRT",
-            boxes,
-            scores,
-            background_class_i=background_class,
-            box_coding_i=box_coding,
-            iou_threshold_f=iou_threshold,
-            max_output_boxes_i=max_output_boxes,
-            plugin_version_s=plugin_version,
-            score_activation_i=score_activation,
-            score_threshold_f=score_threshold,
-            outputs=4,
-        )
-        nums, boxes, scores, classes = out
-        return nums, boxes, scores, classes
-
-
 class ONNX_ORT(nn.Module):
     """onnx module with ONNX-Runtime NMS operation."""
 
@@ -194,7 +139,8 @@ class ONNX_ORT(nn.Module):
         boxes = x[:, :, :4]
         conf = x[:, :, 4:5]
         scores = x[:, :, 5:6]
-        lmks = x[:, :, 6:16]
+        lmks = x[:, :, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]]
+        lmks_mask = x[:, :, [8, 11, 14, 17, 20]]
         scores *= conf
         boxes @= self.convert_matrix
         max_score, category_id = scores.max(2, keepdim=True)
@@ -209,314 +155,83 @@ class ONNX_ORT(nn.Module):
         selected_categories = category_id[X, Y, :].float()
         selected_scores = max_score[X, Y, :]
         selected_lmks = lmks[X, Y, :]
+        selected_lmks_mask = lmks_mask[X, Y, :]
         X = X.unsqueeze(1).float()
         return torch.cat(
-            [X, selected_boxes, selected_categories, selected_scores, selected_lmks], 1
-        )
-
-
-class TRT_NMS2(torch.autograd.Function):
-    """TensorRT NMS operation"""
-
-    @staticmethod
-    def forward(
-        ctx,
-        boxes,
-        scores,
-        score_threshold=0.25,
-        iou_threshold=0.45,
-        max_output_boxes_per_class=100,
-    ):
-        device = boxes.device
-        batch = scores.shape[0]
-        num_det = random.randint(0, 100)
-        batches = torch.randint(0, batch, (num_det,)).sort()[0].to(device)
-        idxs = torch.arange(100, 100 + num_det).to(device)
-        zeros = torch.zeros((num_det,), dtype=torch.int64).to(device)
-        selected_indices = torch.cat([batches[None], zeros[None], idxs[None]], 0).T.contiguous()
-        selected_indices = selected_indices.to(torch.int64)
-        return_selected_indices = torch.zeros(
-            (batch * max_output_boxes_per_class, 3), dtype=torch.int64, device=device
-        )
-        return_selected_indices[: selected_indices.shape[0]] = selected_indices
-        return return_selected_indices
-
-    @staticmethod
-    def symbolic(
-        g,
-        boxes,
-        scores,
-        score_threshold=0.25,
-        iou_threshold=0.45,
-        max_output_boxes_per_class=100,
-    ):
-        return g.op(
-            "TRT::EfficientNMS_ONNX_TRT",
-            boxes,
-            scores,
-            score_threshold_f=score_threshold,
-            iou_threshold_f=iou_threshold,
-            max_output_boxes_per_class_i=max_output_boxes_per_class,
-            center_point_box_i=0,
-        )
-
-
-class TRT_NMS3(torch.autograd.Function):
-    """ONNX-Runtime NMS operation"""
-
-    @staticmethod
-    def forward(
-        ctx,
-        boxes,
-        scores,
-        max_output_boxes_per_class=torch.tensor([100]),
-        iou_threshold=torch.tensor([0.45]),
-        score_threshold=torch.tensor([0.25]),
-    ):
-        device = boxes.device
-        batch = scores.shape[0]
-        num_det = random.randint(0, 100)
-        batches = torch.randint(0, batch, (num_det,)).sort()[0].to(device)
-        idxs = torch.arange(100, 100 + num_det).to(device)
-        zeros = torch.zeros((num_det,), dtype=torch.int64).to(device)
-        selected_indices = torch.cat([batches[None], zeros[None], idxs[None]], 0).T.contiguous()
-        selected_indices = selected_indices.to(torch.int64)
-        return_selected_indices = torch.zeros(
-            (batch * max_output_boxes_per_class, 3), dtype=torch.int64, device=device
-        )
-        return_selected_indices[: selected_indices.shape[0]] = selected_indices
-        return return_selected_indices
-
-    @staticmethod
-    def symbolic(
-        g,
-        boxes,
-        scores,
-        max_output_boxes_per_class,
-        iou_threshold,
-        score_threshold,
-    ):
-        return g.op(
-            "NonMaxSuppression",
-            boxes,
-            scores,
-            max_output_boxes_per_class,
-            iou_threshold,
-            score_threshold,
+            [
+                X,
+                selected_boxes,
+                selected_categories,
+                selected_scores,
+                selected_lmks,
+                selected_lmks_mask,
+            ],
+            1,
         )
 
 
 class TRT_NMS4(torch.autograd.Function):
-    """TensorRT NMS operation"""
+    """TensorRT NMS operation using EfficientNMSCustom_TRT"""
 
     @staticmethod
     def forward(
         ctx,
         boxes,
         scores,
-        lmks,
         background_class=-1,
-        box_coding=1,
         iou_threshold=0.45,
         max_output_boxes=100,
-        plugin_version="1",
         score_activation=0,
         score_threshold=0.25,
+        box_coding=1,
     ):
+        device = boxes.device
+        dtype = boxes.dtype
+
         batch_size, num_boxes, num_classes = scores.shape
-        num_det = torch.randint(0, max_output_boxes, (batch_size, 1), dtype=torch.int32)
-        det_boxes = torch.randn(batch_size, max_output_boxes, 4)
-        det_scores = torch.randn(batch_size, max_output_boxes)
-        det_classes = torch.randint(
-            0, num_classes, (batch_size, max_output_boxes), dtype=torch.int32
+        num_det = torch.randint(
+            0, max_output_boxes, (batch_size, 1), device=device, dtype=torch.int32
         )
-        det_lmks = torch.randn(batch_size, max_output_boxes, 10)
-        return num_det, det_boxes, det_scores, det_classes, det_lmks
+        det_boxes = torch.randn(batch_size, max_output_boxes, 4, device=device, dtype=dtype)
+        det_scores = torch.randn(batch_size, max_output_boxes, device=device, dtype=dtype)
+        det_classes = torch.randint(
+            0, num_classes, (batch_size, max_output_boxes), device=device, dtype=torch.int32
+        )
+        det_indices = torch.randint(
+            0,
+            num_boxes,
+            (batch_size, max_output_boxes),
+            device=device,
+            dtype=torch.int32,
+        )
+        return num_det, det_boxes, det_scores, det_classes, det_indices
 
     @staticmethod
     def symbolic(
         g,
         boxes,
         scores,
-        lmks,
         background_class=-1,
-        box_coding=1,
         iou_threshold=0.45,
         max_output_boxes=100,
-        plugin_version="1",
         score_activation=0,
         score_threshold=0.25,
+        box_coding=1,
     ):
         out = g.op(
-            "TRT::EfficientNMSLandmark_TRT",
+            "TRT::EfficientNMSCustom_TRT",
             boxes,
             scores,
-            lmks,
             background_class_i=background_class,
             box_coding_i=box_coding,
             iou_threshold_f=iou_threshold,
             max_output_boxes_i=max_output_boxes,
-            plugin_version_s=plugin_version,
             score_activation_i=score_activation,
             score_threshold_f=score_threshold,
             outputs=5,
         )
-        nums, boxes, scores, classes, lmks = out
-        return nums, boxes, scores, classes, lmks
-
-
-class ONNX_TRT(nn.Module):
-    """onnx module with TensorRT NMS operation."""
-
-    def __init__(self, max_obj=100, iou_thres=0.45, score_thres=0.25, max_wh=640, device=None):
-        super().__init__()
-        self.device = device if device else torch.device("cpu")
-        self.max_wh = max_wh
-        self.max_obj_i = max_obj
-        self.type_nms_padding = 1  # or 1, or 2
-
-        self.register_buffer("max_obj", torch.tensor([max_obj]))
-        self.register_buffer("iou_threshold", torch.tensor([iou_thres]))
-        self.register_buffer("score_threshold", torch.tensor([score_thres]))
-
-        self.register_buffer(
-            "convert_matrix",
-            torch.tensor(
-                [
-                    [1, 0, 1, 0],
-                    [0, 1, 0, 1],
-                    [-0.5, 0, 0.5, 0],
-                    [0, -0.5, 0, 0.5],
-                ],
-                dtype=torch.float32,
-            ),
-        )
-
-    def forward(self, x):
-        boxes = x[:, :, :4]
-        conf = x[:, :, 4:5]
-        scores = x[:, :, 5:6]
-        lmks = x[:, :, 6:16]
-
-        batch_size = boxes.shape[0]
-
-        scores *= conf
-        boxes @= self.convert_matrix
-        max_score, category_id = scores.max(2, keepdim=True)
-        dis = category_id.float() * self.max_wh
-        nmsbox = boxes + dis
-        max_score_tp = max_score.transpose(1, 2).contiguous()
-
-        selected_indices = TRT_NMS3.apply(
-            nmsbox,
-            max_score_tp,
-            self.max_obj,
-            self.iou_threshold,
-            self.score_threshold,
-        ).to(torch.long)
-
-        # # TODO: EfficientNMS_ONNX_TRT current not working
-        # selected_indices = TRT_NMS2.apply(
-        #     nmsbox,
-        #     max_score_tp,
-        #     self.score_threshold,
-        #     self.iou_threshold,
-        #     self.max_obj,
-        # ).to(torch.long)
-
-        total_object = selected_indices.shape[0]
-
-        X, Y = selected_indices[:, 0], selected_indices[:, 2]
-
-        selected_boxes = boxes[X, Y]
-        selected_categories = category_id[X, Y].float()
-        selected_scores = max_score[X, Y]
-        selected_lmks = lmks[X, Y]
-
-        # X = X.unsqueeze(1).float()
-        # return torch.cat(
-        #     [X, selected_boxes, selected_categories, selected_scores, selected_lmks], 1
-        # )
-
-        if self.type_nms_padding == 0 or self.type_nms_padding == 2:
-            # If sum(axis=1) is zero
-            num_object1 = (
-                torch.topk(
-                    torch.where(
-                        selected_indices.sum(dim=1) > 0,
-                        torch.arange(0, total_object, 1, device=self.device, dtype=torch.int32),
-                        torch.zeros(total_object, device=self.device, dtype=torch.int32),
-                    ).to(torch.float),
-                    k=1,
-                    largest=True,
-                )[1]
-                + 1
-            ).reshape((1,))
-            num_object = num_object1
-        elif self.type_nms_padding == 1 or self.type_nms_padding == 2:
-            # Check lag not change
-            selected_indices_lag = (selected_indices[1:] - selected_indices[:-1]).sum(dim=1)
-            num_object2 = (
-                torch.topk(
-                    torch.where(
-                        selected_indices_lag != 0,
-                        torch.arange(0, total_object - 1, device=self.device, dtype=torch.int32),
-                        torch.zeros((1,), device=self.device, dtype=torch.int32),
-                    ).to(torch.float),
-                    k=1,
-                    largest=True,
-                )[1]
-                + 2
-            ).reshape((1,))
-            num_object = num_object2
-
-        if self.type_nms_padding == 2:
-            num_object = (selected_indices_lag.sum() != 0).to(torch.float32) * torch.min(
-                num_object1, num_object2
-            )
-
-        batch_indices_per_batch = torch.where(
-            (
-                X.unsqueeze(dim=1)
-                == torch.arange(0, batch_size, dtype=X.dtype, device=self.device).unsqueeze(dim=0)
-            )
-            & torch.where(
-                torch.arange(0, total_object, device=self.device, dtype=torch.int32) < num_object,
-                torch.ones((1,), device=self.device, dtype=torch.int32),
-                torch.zeros((1,), device=self.device, dtype=torch.int32),
-            )
-            .to(torch.bool)
-            .unsqueeze(dim=1),
-            torch.ones((1,), device=self.device, dtype=torch.int32),
-            torch.zeros((1,), device=self.device, dtype=torch.int32),
-        )
-
-        num_det = batch_indices_per_batch.sum(dim=0).view(batch_size, 1).to(torch.int32)
-
-        idxs = (
-            torch.topk(
-                batch_indices_per_batch.to(torch.float32)
-                * torch.arange(0, total_object, dtype=torch.int32, device=self.device).unsqueeze(
-                    dim=1
-                ),
-                k=self.max_obj_i,
-                dim=0,
-                largest=True,
-                sorted=True,
-            )[0]
-            .t()
-            .contiguous()
-            .view(-1)
-            .to(torch.long)
-        )
-
-        det_boxes = selected_boxes[idxs].view(batch_size, self.max_obj_i, 4).to(torch.float32)
-        det_scores = selected_scores[idxs].view(batch_size, self.max_obj_i, 1).to(torch.float32)
-        det_classes = (
-            selected_categories[idxs].view(batch_size, self.max_obj_i, 1).to(torch.float32)
-        )
-        det_lmks = selected_lmks[idxs].view(batch_size, self.max_obj_i, 10).to(torch.float32)
-        return num_det, det_boxes, det_scores, det_classes, det_lmks
+        num_det, det_boxes, det_scores, det_classes, det_indices = out
+        return num_det, det_boxes, det_scores, det_classes, det_indices
 
 
 class ONNX_TRT2(nn.Module):
@@ -537,21 +252,33 @@ class ONNX_TRT2(nn.Module):
         boxes = x[:, :, :4]
         conf = x[:, :, 4:5]
         scores = x[:, :, 5:6]
-        lmks = x[:, :, 6:16]
+        lmks = x[:, :, [6, 7, 9, 10, 12, 13, 15, 16, 18, 19]]
+        lmks_mask = x[:, :, [8, 11, 14, 17, 20]]
+
+        batch_size, _, _ = conf.shape
+        total_object = batch_size * self.max_obj
+
         scores *= conf
-        num_det, det_boxes, det_scores, det_classes, det_lmks = TRT_NMS4.apply(
+
+        num_det, det_boxes, det_scores, det_classes, det_indices = TRT_NMS4.apply(
             boxes,
             scores,
-            lmks,
             self.background_class,
-            self.box_coding,
             self.iou_threshold,
             self.max_obj,
-            self.plugin_version,
             self.score_activation,
             self.score_threshold,
         )
-        return num_det, det_boxes, det_scores, det_classes, det_lmks
+        batch_indices = torch.ones_like(det_indices) * torch.arange(
+            batch_size, device=self.device, dtype=torch.int32
+        ).unsqueeze(1)
+        batch_indices = batch_indices.view(total_object).to(torch.long)
+        det_indices = det_indices.view(total_object).to(torch.long)
+
+        det_lmks = lmks[batch_indices, det_indices].view(batch_size, self.max_obj, 10)
+        det_lmks_mask = lmks_mask[batch_indices, det_indices].view(batch_size, self.max_obj, 5)
+
+        return num_det, det_boxes, det_scores, det_classes, det_lmks, det_lmks_mask
 
 
 class End2End(nn.Module):

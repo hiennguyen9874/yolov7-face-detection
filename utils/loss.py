@@ -482,6 +482,7 @@ class ComputeLoss:
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["obj_pw"]], device=device))
+        BCElandmark = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["lmks_pw"]], device=device))
         landmarks_loss = LandmarksLoss(1.0)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
@@ -499,9 +500,18 @@ class ComputeLoss:
         # self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.1, .05])  # P3-P7
         # self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.5, 0.4, .1])  # P3-P7
         self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
-        (self.BCEcls, self.BCEobj, self.landmarks_loss, self.gr, self.hyp, self.autobalance,) = (
+        (
+            self.BCEcls,
+            self.BCEobj,
+            self.BCElandmark,
+            self.landmarks_loss,
+            self.gr,
+            self.hyp,
+            self.autobalance,
+        ) = (
             BCEcls,
             BCEobj,
+            BCElandmark,
             landmarks_loss,
             model.gr,
             h,
@@ -512,7 +522,8 @@ class ComputeLoss:
 
     def __call__(self, p, targets):  # predictions, targets, model
         device = targets.device
-        lcls, lbox, lobj, llmks = (
+        lcls, lbox, lobj, llmks, llmks_mask = (
+            torch.zeros(1, device=device),
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
@@ -534,7 +545,7 @@ class ComputeLoss:
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(
-                    pbox.T, tbox[i], x1y1x2y2=False, CIoU=True
+                    pbox.T, tbox[i], x1y1x2y2=False, EIoU=True
                 )  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
@@ -550,10 +561,16 @@ class ComputeLoss:
                     # t[t==self.cp] = iou.detach().clamp(0).type(t.dtype)
                     lcls += self.BCEcls(ps[:, 5 : self.nc + 5], t)  # BCE
 
-                plmks = ps[:, 5 + self.nc : 5 + self.nc + 10]
-                plmks = plmks * 2.0 - 0.5
+                plmks_x = ps[:, 5 + self.nc :: 3] * 2.0 - 0.5
+                plmks_y = ps[:, 5 + self.nc + 1 :: 3] * 2.0 - 0.5
+                plmks_s = ps[:, 5 + self.nc + 2 :: 3]
 
-                llmks += self.landmarks_loss(plmks, tlmks[i], tlmks_mask[i])
+                llmks_mask += self.BCElandmark(plmks_s, tlmks_mask[i])
+
+                llmks += (
+                    self.landmarks_loss(tlmks[i][:, 0::2], plmks_x, tlmks_mask[i])
+                    + self.landmarks_loss(tlmks[i][:, 1::2], plmks_y, tlmks_mask[i])
+                ) / 2
 
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
@@ -571,10 +588,11 @@ class ComputeLoss:
         lobj *= self.hyp["obj"]
         lcls *= self.hyp["cls"]
         llmks *= self.hyp["lmks"]
+        llmks_mask *= self.hyp["lmks_mask"]
         bs = tobj.shape[0]  # batch size
 
-        loss = lbox + lobj + lcls + llmks
-        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, loss)).detach()
+        loss = lbox + lobj + lcls + llmks + llmks_mask
+        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, llmks_mask, loss)).detach()
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
@@ -652,11 +670,7 @@ class ComputeLoss:
             lmks[:, [8, 9]] = lmks[:, [8, 9]] - gij
             tlmks.append(lmks)
 
-            lmks_mask = torch.where(
-                t[:, 16:21].repeat_interleave(repeats=2, dim=1) > 0,
-                torch.full_like(lmks, 1.0),
-                torch.full_like(lmks, 0.0),
-            )
+            lmks_mask = (t[:, 16:21] > 0).float()
             tlmks_mask.append(lmks_mask)
 
         return tcls, tbox, tlmks, tlmks_mask, indices, anch
@@ -672,6 +686,7 @@ class ComputeLossOTA:
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["obj_pw"]], device=device))
+        BCElandmark = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["lmks_pw"]], device=device))
         landmarks_loss = LandmarksLoss(1.0)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
@@ -687,9 +702,18 @@ class ComputeLossOTA:
         det = model.module.model[-1] if is_parallel(model) else model.model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
-        (self.BCEcls, self.BCEobj, self.landmarks_loss, self.gr, self.hyp, self.autobalance,) = (
+        (
+            self.BCEcls,
+            self.BCEobj,
+            self.BCElandmark,
+            self.landmarks_loss,
+            self.gr,
+            self.hyp,
+            self.autobalance,
+        ) = (
             BCEcls,
             BCEobj,
+            BCElandmark,
             landmarks_loss,
             model.gr,
             h,
@@ -700,7 +724,8 @@ class ComputeLossOTA:
 
     def __call__(self, p, targets, imgs):  # predictions, targets, model
         device = targets.device
-        lcls, lbox, lobj, llmks = (
+        lcls, lbox, lobj, llmks, llmks_mask = (
+            torch.zeros(1, device=device),
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
             torch.zeros(1, device=device),
@@ -730,7 +755,7 @@ class ComputeLossOTA:
                 selected_tbox = targets[i][:, 2:6] * pre_gen_gains[i]
                 selected_tbox[:, :2] -= grid
                 iou = bbox_iou(
-                    pbox.T, selected_tbox, x1y1x2y2=False, CIoU=True
+                    pbox.T, selected_tbox, x1y1x2y2=False, EIoU=True
                 )  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
@@ -747,8 +772,9 @@ class ComputeLossOTA:
                     lcls += self.BCEcls(ps[:, 5 : self.nc + 5], t)  # BCE
 
                 # Landmark
-                plmks = ps[:, 5 + self.nc : 5 + self.nc + 10]
-                plmks = plmks * 2.0 - 0.5
+                plmks_x = ps[:, 5 + self.nc :: 3] * 2.0 - 0.5
+                plmks_y = ps[:, 5 + self.nc + 1 :: 3] * 2.0 - 0.5
+                plmks_s = ps[:, 5 + self.nc + 2 :: 3]
 
                 selected_tlmks = targets[i][:, 6:16] * pre_gen_gains_lmks[i]
                 selected_tlmks[:, [0, 1]] -= grid
@@ -757,14 +783,14 @@ class ComputeLossOTA:
                 selected_tlmks[:, [6, 7]] -= grid
                 selected_tlmks[:, [8, 9]] -= grid
 
-                # Landmark mask
-                selected_tlmks_mask = torch.where(
-                    targets[i][:, 16:21].repeat_interleave(repeats=2, dim=1) > 0,
-                    torch.full_like(selected_tlmks, 1.0),
-                    torch.full_like(selected_tlmks, 0.0),
-                )
+                selected_tlmks_mask = (targets[i][:, 16:21] > 0).float()
 
-                llmks += self.landmarks_loss(plmks, selected_tlmks, selected_tlmks_mask)
+                llmks_mask += self.BCElandmark(plmks_s, selected_tlmks_mask)
+
+                llmks += (
+                    self.landmarks_loss(selected_tlmks[:, 0::2], plmks_x, selected_tlmks_mask)
+                    + self.landmarks_loss(selected_tlmks[:, 1::2], plmks_y, selected_tlmks_mask)
+                ) / 2
 
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
@@ -781,10 +807,11 @@ class ComputeLossOTA:
         lobj *= self.hyp["obj"]
         lcls *= self.hyp["cls"]
         llmks *= self.hyp["lmks"]
+        llmks_mask *= self.hyp["lmks_mask"]
         bs = tobj.shape[0]  # batch size
 
-        loss = lbox + lobj + lcls + llmks
-        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, loss)).detach()
+        loss = lbox + lobj + lcls + llmks + llmks_mask
+        return loss * bs, torch.cat((lbox, lobj, lcls, llmks, llmks_mask, loss)).detach()
 
     def build_targets(self, p, targets, imgs):
         # indices, anch = self.find_positive(p, targets)

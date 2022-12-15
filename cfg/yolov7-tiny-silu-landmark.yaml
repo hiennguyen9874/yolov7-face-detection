@@ -1,17 +1,15 @@
+# parameters
 nc: 1 # number of classes
-nlandmark: 5 # number of keypoints
+nkpt: 5 # number of keypoints
 depth_multiple: 1.0 # model depth multiple
 width_multiple: 1.0 # layer channel multiple
-dw_conv_landmark: False
+dw_conv_kpt: True
 
 # anchors
 anchors:
-  # - [10, 13, 16, 30, 33, 23] # P3/8
-  # - [30, 61, 62, 45, 59, 119] # P4/16
-  # - [116, 90, 156, 198, 373, 326] # P5/32
-  - [4, 5, 8, 10, 13, 16] # P3/8
-  - [23, 29, 43, 55, 73, 105] # P4/16
-  - [146, 217, 231, 300, 335, 433] # P5/32
+  - [4, 5, 6, 8, 10, 12] # P3/8
+  - [15, 19, 23, 30, 39, 52] # P4/16
+  - [72, 97, 123, 164, 209, 297] # P5/32
 
 # YOLOv7-tiny backbone
 backbone:
@@ -113,5 +111,5 @@ head: [
     [65, 1, Conv, [256, 3, 1]],
     [73, 1, Conv, [512, 3, 1]],
 
-    [[74, 75, 76], 1, ILandmark, [nc, anchors, nlandmark]], # Detect(P3, P4, P5)
+    [[74, 75, 76], 1, IKeypoint, [nc, anchors, nkpt]], # Detect(P3, P4, P5)
   ]

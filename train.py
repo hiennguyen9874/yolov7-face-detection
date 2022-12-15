@@ -162,7 +162,7 @@ def train(hyp, opt, device, tb_writer=None):
             v.requires_grad = False
 
     # Optimizer
-    nbs = 64  # nominal batch size
+    nbs = 32  # nominal batch size
     accumulate = max(round(nbs / total_batch_size), 1)  # accumulate loss before optimizing
     hyp["weight_decay"] *= total_batch_size * accumulate / nbs  # scale weight_decay
     logger.info(f"Scaled weight_decay = {hyp['weight_decay']}")
@@ -441,12 +441,12 @@ def train(hyp, opt, device, tb_writer=None):
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(5, device=device)  # mean losses
+        mloss = torch.zeros(6, device=device)  # mean losses
         if rank != -1:
             dataloader.sampler.set_epoch(epoch)
         pbar = enumerate(dataloader)
         logger.info(
-            ("\n" + "%10s" * 9)
+            ("\n" + "%10s" * 10)
             % (
                 "Epoch",
                 "gpu_mem",
@@ -454,6 +454,7 @@ def train(hyp, opt, device, tb_writer=None):
                 "obj",
                 "cls",
                 "lmks",
+                "lmks_mask",
                 "total",
                 "labels",
                 "img_size",
@@ -529,7 +530,7 @@ def train(hyp, opt, device, tb_writer=None):
                 mem = "%.3gG" % (
                     torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0
                 )  # (GB)
-                s = ("%10s" * 2 + "%10.4g" * 7) % (
+                s = ("%10s" * 2 + "%10.4g" * 8) % (
                     "%g/%g" % (epoch, epochs - 1),
                     mem,
                     *mloss,
@@ -589,7 +590,7 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Write
             with open(results_file, "a") as f:
-                f.write(s + "%10.4g" * 8 % results + "\n")  # append metrics, val_loss
+                f.write(s + "%10.4g" * 9 % results + "\n")  # append metrics, val_loss
             if len(opt.name) and opt.bucket:
                 os.system(
                     "gsutil cp %s gs://%s/results/results%s.txt"
@@ -602,6 +603,7 @@ def train(hyp, opt, device, tb_writer=None):
                 "train/obj_loss",
                 "train/cls_loss",
                 "train/llmks_loss",
+                "train/llmks_mask_loss",  # train loss
                 "metrics/precision",
                 "metrics/recall",
                 "metrics/mAP_0.5",
@@ -610,6 +612,7 @@ def train(hyp, opt, device, tb_writer=None):
                 "val/obj_loss",
                 "val/cls_loss",
                 "val/llmks_loss",
+                "val/llmks_mask_loss",  # val loss
                 "x/lr0",
                 "x/lr1",
                 "x/lr2",
